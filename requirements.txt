@@ -1,0 +1,18 @@
+# Core: everything utils/ and scripts/vlm_scan.py need today.
+#   pip install -r requirements.txt
+#
+# Installed and tested on Python 3.11 (see environment.yml). 3.11 is pinned
+# for the perception stack's sake, not this file's -- everything here also
+# resolves on 3.14.
+
+pillow>=11              # frame rendering, contact sheets, JPEG encoding
+pydantic>=2             # event schemas; v2 API (model_json_schema, model_validate_json)
+av>=14                  # PTS-accurate frame extraction -- see utils/video.py
+numpy                   # frame-difference activity scan (utils/activity.py)
+python-dotenv>=1        # load API keys from .env
+
+# --- VLM backends -----------------------------------------------------------
+# Both are thin HTTP clients; install whichever backends you plan to run.
+# google-genai must be >=1.51.0 for gemini-3.1-pro-preview.
+google-genai>=1.51.0    # --backend gemini (default)
+anthropic               # --backend claude; needs a version with messages.parse()

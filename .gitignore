@@ -1,0 +1,19 @@
+# secrets
+.env
+
+# data and outputs
+data/
+runs/
+*.mp4
+*.mkv
+*.avi
+*.zip
+
+# python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.ipynb_checkpoints/
+runs/
+results/*.jsonl

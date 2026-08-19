@@ -1,0 +1,51 @@
+# Starter query set. One query per line:
+#
+#     axis | the situation to locate
+#
+# The axis tags which capability a failure should be attributed to, and is
+# reported per-axis in the run summary. Lines starting with # are ignored.
+#
+# Axis "negative" marks a control: a situation that did NOT occur. Those need
+# no annotation to score -- you already know the answer is "absent" -- so they
+# measure the one thing testable on day one: whether the model will fabricate
+# a match to be helpful. Any hit on a negative is a finding by itself.
+#
+# Everything else has unknown ground truth until the clip is labelled. Run it
+# anyway: the model's answers tell you where to look, and the rendered frames
+# under runs/ let you check each claim by eye in a couple of minutes.
+
+# --- referential: one object, distinguishable from its neighbours ----------
+referential | an articulated (bendy) city bus passing through the intersection
+referential | a yellow taxi
+referential | a delivery van stopped at the kerb
+referential | a cyclist or e-bike rider crossing the intersection
+
+# --- spatial: position relative to the scene's own geometry ----------------
+spatial | a pedestrian still inside the crosswalk while a vehicle passes behind them
+spatial | a vehicle stopped with part of its body over the crosswalk markings
+spatial | a cyclist riding on the sidewalk rather than in the roadway
+spatial | a vehicle waiting inside the intersection box rather than behind the line
+
+# --- temporal: an instant, not a state ------------------------------------
+temporal | the moment a stopped bus begins to move off
+temporal | the moment a pedestrian steps off the kerb into the roadway
+temporal | a vehicle braking noticeably harder than the traffic around it
+
+# --- relational: several actors, an outcome between them -------------------
+relational | a vehicle that entered the intersection and had to stop partway because someone was crossing in front of it
+relational | a turning vehicle that waited for pedestrians to finish crossing before completing its turn
+relational | a pedestrian who started to cross, then stopped or stepped back because of an approaching vehicle
+relational | two road users passing close enough that one visibly changed course or speed
+
+# --- state: depends on something outside the road users themselves ---------
+# Predicted to fail for information reasons, not reasoning reasons: no signal
+# face on this camera shows periodic colour change (see README section 2).
+state | a vehicle crossing the stop line while its signal was red
+state | pedestrians crossing while their signal was against them
+
+# --- negative controls: none of these happened -----------------------------
+negative | a fire truck with flashing lights driving through the intersection
+negative | a horse-drawn carriage
+negative | a collision in which two vehicles make contact
+negative | a vehicle driving the wrong way against the flow of traffic
+negative | a person lying in the roadway
