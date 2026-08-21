@@ -15,16 +15,33 @@ class ClaudeBackend:
         self.model = model
         self.client = anthropic.Anthropic()
 
-    def run(self, system, images, text, schema, max_tokens=8000):
-        """Generic call: system prompt + images + text -> validated `schema`.
+    @staticmethod
+    def content(frames, text):
+        """[(label, image)] + trailing text -> a user content list.
+
+        A label that is not None is sent as its own text block immediately
+        before its image. Nothing else can express the pairing: an image block
+        carries only its source, with no caption or metadata field, so a frame
+        is bound to its timestamp either in its pixels or by an adjacent block.
+        """
+        content = []
+        for label, img in frames:
+            if label is not None:
+                content.append({"type": "text", "text": label})
+            content.append({"type": "image", "source": {
+                "type": "base64", "media_type": "image/jpeg",
+                "data": to_b64(img)}})
+        # the varying part goes last, so the frames stay a stable prefix
+        content.append({"type": "text", "text": text})
+        return content
+
+    def run(self, system, frames, text, schema, max_tokens=8000):
+        """Generic call: system prompt + frames + text -> validated `schema`.
 
         Task-specific callers build on this so every task shares one place
         where retries, caching and model options are configured.
         """
-        content = [{"type": "image", "source": {
-            "type": "base64", "media_type": "image/jpeg", "data": to_b64(img)}}
-            for img in images]
-        content.append({"type": "text", "text": text})
+        content = self.content(frames, text)
         resp = self.client.messages.parse(
             model=self.model,
             max_tokens=max_tokens,

@@ -19,7 +19,7 @@ from typing import Sequence, Tuple
 
 from PIL import Image
 
-_SCENE = """The camera is fixed, mounted high on a building, and looks down obliquely across an intersection in New York City. A large part of the frame is the wall of the host building, a sidewalk scaffolding shed, and street trees; those areas contain no road users. Frames are given in chronological order, each captioned with its timestamp in seconds."""
+_SCENE = """The camera is fixed, mounted high on a building, and looks down obliquely across an intersection in New York City. A large part of the frame is the wall of the host building, a sidewalk scaffolding shed, and street trees; those areas contain no road users. Frames are given in chronological order; how each frame's timestamp is supplied is stated in the user message."""
 
 SYSTEM_OPEN = f"""You review fixed-camera footage of an urban intersection and report traffic events.
 
@@ -52,23 +52,69 @@ Rules:
 4. Judge only from the frames. Do not assume that a plausible sequence occurred between two frames; if the decisive moment falls in a gap, say so in unreadable_reasons."""
 
 
+# How a frame's timestamp reaches the model. Three independent channels, so
+# each can be switched on alone and the arms compared on the same frames:
+#
+#   burn        drawn into the frame's own pixels (survives whatever cropping
+#               and tiling the provider does internally, and is the only
+#               channel a person sees when opening the saved jpg)
+#   list        one text block naming every timestamp in the window, in order;
+#               binding a frame to its time is then positional -- the model has
+#               to count to the k-th number
+#   interleave  a text block carrying one timestamp immediately before its own
+#               frame, so the pairing is in the message structure itself
+#
+# `burn,list` is what every run before this flag existed used, and stays the
+# default so an old command reproduces its earlier result.
+CHANNELS = ("burn", "list", "interleave")
+DEFAULT_ENCODING = "burn,list"
+
+
+def parse_encoding(spec: str) -> frozenset:
+    """'burn,interleave' or 'none' -> the set of active channels."""
+    spec = (spec or "").strip()
+    if spec in ("", "none"):
+        return frozenset()
+    got = frozenset(p.strip() for p in spec.split(",") if p.strip())
+    bad = got - set(CHANNELS)
+    if bad:
+        raise ValueError(f"unknown timestamp channel(s) {sorted(bad)} -- "
+                         f"pick from {list(CHANNELS)}, or 'none'")
+    return got
+
+
 def frames_text(frames: Sequence[Tuple[float, Image.Image]],
-                t0: float, t1: float) -> str:
-    stamps = ", ".join(f"{t:.2f}" for t, _ in frames)
-    return (f"Window {t0:.2f}s - {t1:.2f}s of the recording, "
-            f"{len(frames)} frames in chronological order.\n"
-            f"Timestamps (seconds into the recording): {stamps}\n"
-            f"Each frame is captioned with its own timestamp.")
+                t0: float, t1: float, enc: frozenset) -> str:
+    """The text half of the payload. It describes only the channels actually
+    in use: telling the model a frame is captioned when it is not invites it
+    to invent the caption it was promised."""
+    lines = [f"Window {t0:.2f}s - {t1:.2f}s of the recording, "
+             f"{len(frames)} frames in chronological order."]
+    if "list" in enc:
+        stamps = ", ".join(f"{t:.2f}" for t, _ in frames)
+        lines.append(f"Timestamps (seconds into the recording): {stamps}")
+    if "interleave" in enc:
+        lines.append("Each frame is immediately preceded by a line giving "
+                     "that frame's own timestamp.")
+    if "burn" in enc:
+        lines.append("Each frame carries its own timestamp burnt into its "
+                     "top-left corner.")
+    if not enc:
+        lines.append("No timestamps are supplied. Give times in seconds from "
+                     "the start of the window, and say in unreadable_reasons "
+                     "that they are estimated from frame order.")
+    return "\n".join(lines)
 
 
-def open_prompt(frames, t0: float, t1: float) -> str:
-    return (frames_text(frames, t0, t1) +
+def open_prompt(frames, t0: float, t1: float, enc: frozenset) -> str:
+    return (frames_text(frames, t0, t1, enc) +
             "\n\nReport any traffic events. Use these timestamps for "
             "t_start_sec / t_end_sec.")
 
 
-def query_prompt(frames, t0: float, t1: float, query: str) -> str:
-    return (frames_text(frames, t0, t1) +
+def query_prompt(frames, t0: float, t1: float, query: str,
+                 enc: frozenset) -> str:
+    return (frames_text(frames, t0, t1, enc) +
             f"\n\nSituation to locate:\n  {query}\n\n"
             f"Does it occur in these frames? Use these timestamps for "
             f"t_start_sec / t_end_sec / clearest_frame_sec.")

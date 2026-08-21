@@ -27,8 +27,15 @@ Two modes over the same frames:
   # open-ended, no query
   python scripts/vlm_probe.py data/clip.mp4 --start 40 --end 100 --out runs/open
 
+  # how the frames carry their timestamps -- an ablation, one channel at a
+  # time. Each arm needs its own --out, since the jsonl is appended to.
+  for enc in burn,list burn interleave burn,interleave; do
+      python scripts/vlm_probe.py data/clip.mp4 --queries queries.txt \
+          --time-encoding $enc --out runs/ts-${enc//,/-}
+  done
+
 Deps: pip install -r requirements.txt
-Keys: cp .env.example .env, or export them. Shell wins over .env.
+Keys: cp .env
 """
 import argparse
 import json
@@ -42,8 +49,8 @@ from utils.render import (ROI_PRESETS, apply_roi, fit, overview_grid,
                           parse_roi, stamp)
 from utils.schema import QueryResult, WindowResult
 from utils.video import extract, probe, windows
-from utils.vlm import (SYSTEM_OPEN, SYSTEM_QUERY, get_backend, open_prompt,
-                       query_prompt)
+from utils.vlm import (CHANNELS, DEFAULT_ENCODING, SYSTEM_OPEN, SYSTEM_QUERY,
+                       get_backend, open_prompt, parse_encoding, query_prompt)
 
 
 def fmt(t):
@@ -60,16 +67,30 @@ def sample_overview(video, start, end, every, roi):
     return thumbs
 
 
-def save_frames(frames, out_dir, tag):
+def render_frame(t, img, enc):
+    """One frame as the model will receive it: (label, image).
+
+    The label is the interleaved text block that precedes this image, or None
+    when that channel is off; the burnt-in caption is a separate channel, so
+    both, either or neither can be in play.
+    """
+    label = f"t={t:.2f}s" if "interleave" in enc else None
+    return label, fit(stamp(img, f"t={t:.2f}s") if "burn" in enc else img)
+
+
+def save_frames(frames, out_dir, tag, enc):
     """Persist exactly what the model is shown.
 
     When a probe misses something the first question is whether the evidence
-    was legible at all, so this is written whether or not a call is made.
+    was legible at all, so this is written whether or not a call is made. It
+    follows `enc`, so with the burn channel off these files are the bare
+    pixels the model got -- the timestamp is still in the filename, where a
+    person can read it and the model cannot.
     """
     d = Path(out_dir) / tag
     d.mkdir(parents=True, exist_ok=True)
     for t, img in frames:
-        fit(stamp(img, f"t={t:.2f}s")).save(d / f"{t:08.2f}.jpg", quality=88)
+        render_frame(t, img, enc)[1].save(d / f"{t:08.2f}.jpg", quality=88)
     return d
 
 
@@ -98,6 +119,8 @@ def write_summary(path, a, info, plan, queries, mode, results, usages,
     w(f"- clip: `{a.video}`")
     w(f"- range: {a.start:.0f}s - {plan[-1][1]:.0f}s "
       f"({info['width']}x{info['height']}, vfr={info['likely_vfr']})")
+    w(f"- timestamps: `{a.time_encoding}` "
+      f"(channels: {', '.join(CHANNELS)}, or none)")
     w(f"- roi: `{a.roi}` | fps: {a.fps:g} | "
       f"{'windows of ' + format(a.window, 'g') + 's' if a.window else 'whole range, one call'}")
     w(f"- frames per call: {len(plan[0][3])} | model: {backend.model} "
@@ -196,6 +219,15 @@ def parse_args():
                         "facade opposite, which contain no road users; "
                         "'junction' crops to the intersection box, trading the "
                         "approaches away for pixels; 'none' sends the full frame")
+    p.add_argument("--time-encoding", default=DEFAULT_ENCODING,
+                   help="how each frame's timestamp reaches the model, as a "
+                        "comma-separated subset of "
+                        f"{','.join(CHANNELS)} (or 'none'). 'burn' draws it "
+                        "into the pixels, 'list' names every timestamp in one "
+                        "text block, 'interleave' puts one timestamp block "
+                        "immediately before its own frame. The channels are "
+                        "independent and this is worth an ablation: change "
+                        f"one at a time. Default '{DEFAULT_ENCODING}'")
     p.add_argument("--backend", choices=["gemini", "claude"], default="gemini")
     p.add_argument("--model", default=None)
     p.add_argument("--max-output-tokens", type=int, default=32000,
@@ -242,8 +274,11 @@ def main():
     a = parse_args()
     try:
         roi = parse_roi(a.roi)
+        enc = parse_encoding(a.time_encoding)
     except ValueError as e:
         sys.exit(str(e))
+    # normalised, so the record says what ran rather than how it was typed
+    a.time_encoding = ",".join(sorted(enc)) or "none"
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
     res_base = Path(a.results) if a.results else Path("results") / out.name
@@ -293,7 +328,7 @@ def main():
         if len(frames) < a.min_frames:
             continue
         tag = f"{t0:07.2f}-{t1:07.2f}"
-        save_frames(frames, out, tag)
+        save_frames(frames, out, tag, enc)
         plan.append((t0, t1, tag, frames))
     if not plan:
         sys.exit("no usable windows")
@@ -301,7 +336,8 @@ def main():
     span = f"{a.window:g}s each" if a.window else \
            f"whole range, {plan[0][1] - plan[0][0]:.0f}s"
     nframes = sum(len(f) for *_, f in plan)
-    print(f"{len(plan)} window(s), {span}, {a.fps:g} fps, {nframes} frames total")
+    print(f"{len(plan)} window(s), {span}, {a.fps:g} fps, {nframes} frames "
+          f"total, timestamps: {a.time_encoding}")
     if a.dry_run:
         print(f"\nframes -> {out}\nopen them: if you cannot resolve the "
               f"situation yourself, the model cannot either.")
@@ -309,14 +345,15 @@ def main():
 
     results, usages, failures = [], [], []
     for t0, t1, tag, frames in plan:
-        images = [fit(stamp(img, f"t={t:.2f}s")) for t, img in frames]
+        payload = [render_frame(t, img, enc) for t, img in frames]
 
         if mode == "open":
-            res, usage = backend.run(SYSTEM_OPEN, images,
-                                     open_prompt(frames, t0, t1), WindowResult,
-                                     a.max_output_tokens)
+            res, usage = backend.run(SYSTEM_OPEN, payload,
+                                     open_prompt(frames, t0, t1, enc),
+                                     WindowResult, a.max_output_tokens)
             usages.append(usage)
-            rec = {"window": [t0, t1], "mode": "open", **res.model_dump()}
+            rec = {"window": [t0, t1], "mode": "open",
+                   "time_encoding": a.time_encoding, **res.model_dump()}
             results.append(rec)
             append_jsonl(jsonl_path, rec)
             flag = "" if res.signal_head_visible else "  [no signal face visible]"
@@ -329,8 +366,8 @@ def main():
         else:
             for qi, (axis, q) in enumerate(queries):
                 try:
-                    res, usage = backend.run(SYSTEM_QUERY, images,
-                                             query_prompt(frames, t0, t1, q),
+                    res, usage = backend.run(SYSTEM_QUERY, payload,
+                                             query_prompt(frames, t0, t1, q, enc),
                                              QueryResult, a.max_output_tokens)
                 except Exception as e:
                     # One bad call must not discard the answers already in
@@ -338,13 +375,15 @@ def main():
                     failures.append({"axis": axis, "query": q,
                                      "error": f"{type(e).__name__}: {e}"})
                     append_jsonl(jsonl_path, {"window": [t0, t1], "mode": "query",
+                                              "time_encoding": a.time_encoding,
                                               "query_index": qi, "axis": axis,
                                               "query": q, "error": str(e)})
                     print(f"\n[{axis}] {q[:64]}\n  FAILED  {type(e).__name__}: "
                           f"{str(e)[:160]}")
                     continue
                 usages.append(usage)
-                rec = {"window": [t0, t1], "mode": "query", "query_index": qi,
+                rec = {"window": [t0, t1], "mode": "query",
+                       "time_encoding": a.time_encoding, "query_index": qi,
                        "axis": axis, "query": q, **res.model_dump()}
                 results.append(rec)
                 append_jsonl(jsonl_path, rec)

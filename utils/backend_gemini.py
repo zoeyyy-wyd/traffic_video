@@ -96,14 +96,28 @@ class GeminiBackend:
         return {"type": "image", "mime_type": "image/jpeg",
                 "data": to_b64(img), "resolution": self.resolution}
 
-    def run(self, system, images, text, schema, max_tokens=8000):
-        """Generic call: system prompt + images + text -> validated `schema`."""
+    def parts(self, system, frames, text):
+        """system + [(label, image)] + trailing text -> the `input` list.
+
+        A label that is not None becomes its own text part immediately before
+        its image, pairing each frame with its timestamp in the request
+        structure rather than only in the pixels.
+        """
         # Every element of a list-valued `input` must be an object carrying a
         # `type` discriminator; a bare string is only accepted when `input` is
         # itself a single string.
-        parts = ([{"type": "text", "text": system}]
-                 + [self._image(img) for img in images]
-                 + [{"type": "text", "text": text}])
+        parts = [{"type": "text", "text": system}]
+        for label, img in frames:
+            if label is not None:
+                parts.append({"type": "text", "text": label})
+            parts.append(self._image(img))
+        # the varying part goes last, so the frames stay a stable prefix
+        parts.append({"type": "text", "text": text})
+        return parts
+
+    def run(self, system, frames, text, schema, max_tokens=8000):
+        """Generic call: system prompt + frames + text -> validated `schema`."""
+        parts = self.parts(system, frames, text)
         interaction = self.client.interactions.create(
             model=self.model,
             input=parts,

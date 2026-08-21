@@ -101,6 +101,48 @@ def main():
     check("sheet is 3 cols x 3 rows", sheet.width == (LONG_EDGE // 3) * 3, str(sheet.size))
     check("base64 non-empty", len(to_b64(img)) > 100)
 
+    # Each timestamp channel is meant to be switchable on its own, so what is
+    # worth pinning is that they stay independent: an arm must not describe a
+    # channel it did not send, and the interleaved blocks must land next to
+    # the frame they name rather than merely somewhere in the message.
+    print("\ntimestamp channels")
+    from utils.vlm import frames_text, parse_encoding
+    check("default arm is burn+list",
+          parse_encoding("burn,list") == frozenset({"burn", "list"}))
+    check("'none' clears every channel", parse_encoding("none") == frozenset())
+    try:
+        parse_encoding("burn,pixels")
+        check("unknown channel rejected", False)
+    except ValueError as e:
+        check("unknown channel rejected", "pixels" in str(e))
+
+    two = frames[:2]
+    listed = frames_text(two, 2.0, 3.0, parse_encoding("list"))
+    inter = frames_text(two, 2.0, 3.0, parse_encoding("interleave"))
+    check("list arm enumerates the timestamps", "Timestamps (seconds" in listed)
+    check("interleave arm does not enumerate", "Timestamps (seconds" not in inter)
+    check("interleave arm says frames are preceded", "immediately preceded" in inter)
+    check("neither arm promises a caption it did not burn",
+          "burnt into" not in inter and "burnt into" not in listed)
+    check("empty arm admits it", "No timestamps are supplied"
+          in frames_text(two, 2.0, 3.0, parse_encoding("none")))
+
+    from utils.backend_claude import ClaudeBackend
+    labelled = [(f"t={t:.2f}s", im) for t, im in two]
+    c = ClaudeBackend.content(labelled, "the query")
+    check("content alternates text/image and ends on the query",
+          [b["type"] for b in c] == ["text", "image", "text", "image", "text"],
+          str([b["type"] for b in c]))
+    check("each label sits immediately before its own frame",
+          c[0]["text"] == f"t={two[0][0]:.2f}s"
+          and c[2]["text"] == f"t={two[1][0]:.2f}s",
+          f"{c[0]['text']} / {c[2]['text']}")
+    check("the varying query goes last", c[-1]["text"] == "the query")
+    check("labels off -> plain image run",
+          [b["type"] for b in ClaudeBackend.content([(None, im) for _, im in two],
+                                                    "q")]
+          == ["image", "image", "text"])
+
     print("\nschema")
     r = WindowResult(events=[], signal_head_visible=False, scene_notes="quiet",
                      unreadable_reasons=["signal facing away"])
@@ -151,6 +193,13 @@ def main():
             continue
         check(f"{name} constructs", True, f"{b.model}")
         check(f"{name} exposes run()", callable(getattr(b, "run", None)))
+        if hasattr(b, "parts"):
+            ps = b.parts("system", [(f"t={t:.2f}s", im) for t, im in frames[:2]],
+                         "the query")
+            check(f"{name} interleaves its parts",
+                  [p["type"] for p in ps]
+                  == ["text", "text", "image", "text", "image", "text"],
+                  str([p["type"] for p in ps]))
         if hasattr(b, "_image"):
             try:
                 d = b._image(img)

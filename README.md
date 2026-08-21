@@ -161,6 +161,24 @@ from the index rather than taken from the model.
 tiled contact sheet versus separate full-resolution frames. Measures where the
 perception bottleneck sits. Every one of these is already a flag on the scripts.
 
+**Timestamp encoding.** Every answer here is a time interval, so how a frame is
+bound to its own timestamp is a lever in its own right. `--time-encoding` takes
+any subset of three independent channels:
+
+| channel | where the timestamp is | how the model must bind it to a frame |
+|---|---|---|
+| `burn` | drawn into the frame's pixels | it is *in* the frame |
+| `list` | one text block naming every timestamp in order | positionally: count to the k-th number |
+| `interleave` | one text block immediately before its own frame | adjacency in the message itself |
+
+`burn,list` is the default and reproduces every run made before the flag
+existed. The interesting arms are `burn` alone, `interleave` alone, and
+`burn,interleave`: the measure is not whether an event is found but whether the
+returned `t_start_sec` / `clearest_frame_sec` land on the right frame, which is
+checkable against the jpgs in `runs/` without a human labelling anything. Note
+that an image content block has no caption or metadata field on either
+provider, so these two are the only places a per-frame timestamp can go.
+
 ### Phase 3 — geometry as an instrument
 
 Only here, and **only on the evaluation window** — not over the corpus.
