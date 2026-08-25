@@ -7,8 +7,12 @@ Two modes over the same frames:
           the situation is not there?  This is the experiment.
   open    give it no hint; what does it find on its own?
 
+Every run gets its own directory under results/, named for when it ran and
+what it ran, holding summary.md, results.jsonl and run.json. Nothing is ever
+appended to a previous run's output.
+
   # look at what the model would receive -- no API call, no key needed
-  python scripts/vlm_probe.py data/clip.mp4 --dry-run --out runs/peek
+  python scripts/vlm_probe.py data/clip.mp4 --dry-run
 
   # a whole recording as one grid, for deriving real ROI coordinates
   python scripts/vlm_probe.py data/clip.mp4 --overview runs/overview.jpg
@@ -22,16 +26,16 @@ Two modes over the same frames:
   # a batch of queries from a file, one per line -- the golden set turned
   # into an experiment.  Include queries for situations that did NOT occur:
   # a probe that never answers "absent" has not been tested.
-  python scripts/vlm_probe.py data/clip.mp4 --queries queries.txt --out runs/probe
+  python scripts/vlm_probe.py data/clip.mp4 --queries queries.txt
 
   # open-ended, no query
-  python scripts/vlm_probe.py data/clip.mp4 --start 40 --end 100 --out runs/open
+  python scripts/vlm_probe.py data/clip.mp4 --start 40 --end 100
 
   # how the frames carry their timestamps -- an ablation, one channel at a
-  # time. Each arm needs its own --out, since the jsonl is appended to.
+  # time. Each arm lands in its own run directory on its own.
   for enc in burn,list burn interleave burn,interleave; do
       python scripts/vlm_probe.py data/clip.mp4 --queries queries.txt \
-          --time-encoding $enc --out runs/ts-${enc//,/-}
+          --time-encoding $enc --name "ts-${enc//,/-}"
   done
 
 Deps: pip install -r requirements.txt
@@ -39,7 +43,10 @@ Keys: cp .env
 """
 import argparse
 import json
+import os
+import re
 import sys
+from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -65,6 +72,43 @@ def sample_overview(video, start, end, every, roi):
             thumbs.append((got[0][0], apply_roi(got[0][1], roi)))
         t += every
     return thumbs
+
+
+def slug(text):
+    """Filesystem- and shell-safe directory component."""
+    text = re.sub(r"[^a-z0-9._-]+", "-", text.lower())
+    return re.sub(r"-{2,}", "-", text).strip("-.") or "run"
+
+
+def run_label(a):
+    """The part of the run directory name that says what was run.
+
+    Ablations are loops over one flag, so a name that does not carry the
+    condition leaves a dozen directories distinguishable only by their
+    timestamp. When the caller supplies --name they have said what matters;
+    otherwise the varying levers -- query set, roi, fps -- go in the name.
+    """
+    if a.name:
+        return slug(a.name)
+    base = Path(a.queries).stem if a.queries else ("query" if a.query else "open")
+    roi = a.roi if a.roi in ROI_PRESETS else "custom"
+    return slug(f"{base}-roi-{roi}-fps{a.fps:g}")
+
+
+def link_frames(run_dir, frames_dir):
+    """A `frames` symlink inside the run directory.
+
+    The frames are the evidence for every claim in summary.md, and they live
+    outside results/ because they are large and disposable while the summary
+    is neither. The link keeps them one hop away instead of one path guess.
+    """
+    link = run_dir / "frames"
+    try:
+        if link.is_symlink() or link.exists():
+            return
+        link.symlink_to(os.path.relpath(frames_dir.resolve(), run_dir.resolve()))
+    except OSError:
+        pass  # a filesystem without symlinks costs a convenience, not a result
 
 
 def render_frame(t, img, enc):
@@ -104,7 +148,7 @@ def append_jsonl(path, rec):
         fh.write(json.dumps(rec) + "\n")
 
 
-def write_summary(path, a, info, plan, queries, mode, results, usages,
+def write_summary(path, a, info, plan, mode, results, usages,
                   backend, frames_dir, failures=()):
     """A readable record of one run.
 
@@ -115,7 +159,7 @@ def write_summary(path, a, info, plan, queries, mode, results, usages,
     """
     L = []
     w = L.append
-    w(f"# probe run: {frames_dir.name}\n")
+    w(f"# probe run: {path.parent.name}\n")
     w(f"- clip: `{a.video}`")
     w(f"- range: {a.start:.0f}s - {plan[-1][1]:.0f}s "
       f"({info['width']}x{info['height']}, vfr={info['likely_vfr']})")
@@ -234,13 +278,21 @@ def parse_args():
                    help="output budget per call. Thinking is drawn from the "
                         "same budget, so too low a value returns an empty body")
     p.add_argument("--env", default=None)
-    p.add_argument("--out", default="runs/probe",
-                   help="where rendered frames go (large; gitignored)")
-    p.add_argument("--results", default=None,
-                   help="where the run's findings go. Default: "
-                        "results/<name of --out>.{jsonl,md}. Kept apart from "
-                        "the frames because these are the output worth reading "
-                        "and keeping, while the frames are working material")
+    p.add_argument("--name", default=None,
+                   help="label for this run, used in its directory name. "
+                        "Default is composed from the query set, roi and fps "
+                        "so an ablation loop separates itself")
+    p.add_argument("--results-root", default="results",
+                   help="parent of the per-run directories")
+    p.add_argument("--run-dir", default=None,
+                   help="use exactly this directory instead of composing "
+                        "results/<timestamp>-<name>. Overrides --name")
+    p.add_argument("--out", default=None,
+                   help="where rendered frames go (large; gitignored). "
+                        "Default runs/<run directory name>, so frames and "
+                        "findings carry the same name. They are kept apart "
+                        "because the findings are worth keeping and reading "
+                        "while the frames are working material")
     p.add_argument("--overview", help="write a thumbnail grid here and exit")
     p.add_argument("--overview-every", type=float, default=60.0)
     p.add_argument("--dry-run", action="store_true",
@@ -279,12 +331,7 @@ def main():
         sys.exit(str(e))
     # normalised, so the record says what ran rather than how it was typed
     a.time_encoding = ",".join(sorted(enc)) or "none"
-    out = Path(a.out)
-    out.mkdir(parents=True, exist_ok=True)
-    res_base = Path(a.results) if a.results else Path("results") / out.name
-    res_base.parent.mkdir(parents=True, exist_ok=True)
-    jsonl_path = res_base.with_suffix(".jsonl")
-    md_path = res_base.with_suffix(".md")
+    started = datetime.now()
 
     info = probe(a.video)
     print(json.dumps(info, indent=2))
@@ -309,6 +356,17 @@ def main():
     mode = "query" if queries else "open"
     print(f"\nmode: {mode}" + (f"  ({len(queries)} quer"
           f"{'y' if len(queries) == 1 else 'ies'})" if queries else ""))
+
+    # One run, one directory. The timestamp makes the name unique without the
+    # caller having to remember one, which is what previously turned two runs
+    # of the same command into a single jsonl with no way to separate them.
+    run_dir = (Path(a.run_dir) if a.run_dir else
+               Path(a.results_root) / f"{started:%Y%m%d-%H%M%S}-{run_label(a)}")
+    out = Path(a.out) if a.out else Path("runs") / run_dir.name
+    out.mkdir(parents=True, exist_ok=True)
+    jsonl_path = run_dir / "results.jsonl"
+    md_path = run_dir / "summary.md"
+    cfg_path = run_dir / "run.json"
 
     backend = None
     if not a.dry_run:
@@ -342,6 +400,37 @@ def main():
         print(f"\nframes -> {out}\nopen them: if you cannot resolve the "
               f"situation yourself, the model cannot either.")
         return
+
+    run_dir.mkdir(parents=True, exist_ok=True)
+    link_frames(run_dir, out)
+    # Written before the first call, not after the last: a run that dies
+    # halfway still leaves a directory that says what it was trying to do.
+    cfg = {
+        "run": run_dir.name,
+        "started": started.isoformat(timespec="seconds"),
+        "mode": mode,
+        "clip": a.video,
+        "video": info,
+        "range_sec": [a.start, plan[-1][1]],
+        "window_sec": a.window,
+        "overlap_sec": a.overlap if a.window else None,
+        "fps": a.fps,
+        "roi": a.roi,
+        "roi_fractions": list(roi) if roi else None,
+        "time_encoding": a.time_encoding,
+        "backend": backend.name,
+        "model": backend.model,
+        "resolution": getattr(backend, "resolution", None),
+        "thinking_level": getattr(backend, "thinking_level", None),
+        "max_output_tokens": a.max_output_tokens,
+        "queries_file": a.queries,
+        "axis_filter": a.axis,
+        "n_queries": len(queries),
+        "n_windows": len(plan),
+        "n_frames": nframes,
+        "frames_dir": str(out),
+    }
+    cfg_path.write_text(json.dumps(cfg, indent=2) + "\n")
 
     results, usages, failures = [], [], []
     for t0, t1, tag, frames in plan:
@@ -457,9 +546,14 @@ def main():
         line += (f"  ~= ${tin / 1e6 * pin + tout / 1e6 * pout:.2f}"
                  if pin and pout else "  (no pricing pinned for this backend)")
         print(line)
-    write_summary(md_path, a, info, plan, queries, mode, results, usages,
+    write_summary(md_path, a, info, plan, mode, results, usages,
                   backend, out, failures)
-    print(f"\n-> {md_path}\n-> {jsonl_path}\n   frames: {out}")
+    cfg.update({"finished": datetime.now().isoformat(timespec="seconds"),
+                "calls_ok": len(usages), "calls_failed": len(failures),
+                "tokens_in": tin, "tokens_out": tout})
+    cfg_path.write_text(json.dumps(cfg, indent=2) + "\n")
+    print(f"\n-> {run_dir}/\n     summary.md  results.jsonl  run.json"
+          f"\n   frames: {out}")
 
 
 if __name__ == "__main__":

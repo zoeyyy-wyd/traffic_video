@@ -322,10 +322,24 @@ searched span grows?
 
 Frames are decoded once and reused across every query in a batch.
 
+**One run, one directory.** Every invocation writes
+`results/<YYYYmmdd-HHMMSS>-<label>/` holding `summary.md` (what was asked and
+what came back), `results.jsonl` (one row per call, written as each answer
+arrives), `run.json` (every parameter, machine-readable) and a `frames`
+symlink to the images that were actually sent, under `runs/<same name>/`.
+
+`<label>` is `--name`, or `<query set>-roi-<roi>-fps<fps>` when that is not
+given, so `for R in none junction wide; do ... --roi $R; done` separates its
+own arms without naming each one. The timestamp is what stops a re-run of the
+same command from appending to the previous run's rows — a comparison between
+two conditions is worthless if it cannot be told which rows came from which.
+`run.json` exists for the same reason: ablations are read across runs, and
+grepping a dozen markdown headers is not a comparison.
+
 ### Open mode — no hint
 
 ```bash
-python scripts/vlm_probe.py data/clip.mp4 --start 40 --end 100 --out runs/open
+python scripts/vlm_probe.py data/clip.mp4 --start 40 --end 100
 ```
 
 Same frames, nothing named. Measures what the model surfaces unprompted, and
@@ -364,7 +378,8 @@ Default backend is `gemini-3.1-pro-preview` at `media_resolution_high`
 ```
 traffic_video/
 |- data/          # source video, frames, exports (gitignored)
-|- runs/          # rendered windows, grids, results.jsonl (gitignored)
+|- runs/          # rendered windows and grids, one dir per run (gitignored)
+|- results/       # one dir per run: summary.md, results.jsonl, run.json
 |- utils/         # library code only -- importable, no side effects on import
 |   |- video.py       # PTS-based extraction, container probing, windowing
 |   |- render.py      # ROI crop, timestamp stamping, overview grids, base64
@@ -419,8 +434,23 @@ explicitly. Shell variables take precedence over the file. `.env` is gitignored.
 
 ## 9. Open questions
 
+0. **The legibility boundary — TODO, and the one that gates the rest.** At what
+   apparent object size, in pixels of the native 3840x2160 frame, does an
+   attribute stop being recoverable at all? Every design decision below is
+   currently a guess about this number: which ROI preset, which resolution
+   tier, which queries are even askable. Measure it on **one clip** —
+   instances of one class at near, mid and far depth, boxes measured rather
+   than assumed, and the *human* boundary established first at native
+   resolution, since §6's rule ("if you cannot resolve the situation yourself,
+   the model cannot either") makes that the ceiling. Once it is a number in
+   pixels it stops being a property of a crop and becomes a property of a
+   target, and every configuration becomes derivable instead of ablated.
+   Method and consequences: `notes/2026-08-23-what-the-roi-runs-do-not-show.md`
+   §0. Candidate targets: `queries/resolution-limited.txt`.
 1. **Signal-face visibility per approach per view** — gates every state-axis
-   experiment (§5). Answerable in an hour by stepping through frames.
+   experiment (§5). Answerable in an hour by stepping through frames. Largely
+   subsumed by question 0: the near/far signal-head pair is the cleanest
+   boundary probe in the scene.
 2. **Track IDs in `labels/all_raw`** — CVAT interpolated annotations usually
    carry them; determines whether Phase 3 association is trivial or a multi-day
    task.

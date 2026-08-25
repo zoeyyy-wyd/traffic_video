@@ -10,9 +10,13 @@ from typing import Optional
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
-# env vars each backend will accept, in precedence order
+# env vars each backend will accept, in precedence order.
+# The trailing commas are load-bearing: without one a single-element entry is
+# a plain string, and every lookup below then iterates its characters -- which
+# silently matched `$_`, so the key check passed with no key set and the run
+# log reported the wrong variable.
 BACKEND_KEYS = {
-    "gemini": ("GEMINI_API_KEY"),
+    "gemini": ("GEMINI_API_KEY", "GOOGLE_API_KEY"),
     "claude": ("ANTHROPIC_API_KEY",),
 }
 

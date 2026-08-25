@@ -5,10 +5,16 @@
 # The axis tags which capability a failure should be attributed to, and is
 # reported per-axis in the run summary. Lines starting with # are ignored.
 #
-# Axis "negative" marks a control: a situation that did NOT occur. Those need
-# no annotation to score -- you already know the answer is "absent" -- so they
+# Axis "negative" marks a control: a situation believed not to occur. Those
+# need no annotation to score -- the answer is already "absent" -- so they
 # measure the one thing testable on day one: whether the model will fabricate
 # a match to be helpful. Any hit on a negative is a finding by itself.
+#
+# CLIP-DEPENDENT. Absence was verified only on
+# data/12thFBotwinik/L12thFloorBotwinik-D-2025-11-03_T-17_00_01.mp4 (see
+# notes/2026-08-20-direction-vs-roi.md section 1). On any other clip these are
+# assumptions, and a fire truck really can drive past. Verify absence before
+# scoring a hit as a fabrication.
 #
 # Everything else has unknown ground truth until the clip is labelled. Run it
 # anyway: the model's answers tell you where to look, and the rendered frames
@@ -43,7 +49,11 @@ relational | two road users passing close enough that one visibly changed course
 state | a vehicle crossing the stop line while its signal was red
 state | pedestrians crossing while their signal was against them
 
-# --- negative controls: none of these happened -----------------------------
+# --- negative controls: none of these happened on the 2025-11-03 clip ------
+# Ordered loosely by how close a near-analogue the scene contains. The three
+# with no analogue at all held under both ROIs; the two with an ambiguous one
+# (a crouching adult, a bus east of the double yellow) failed under both.
+# That ordering is the finding, so keep it visible when adding controls.
 negative | a fire truck with flashing lights driving through the intersection
 negative | a horse-drawn carriage
 negative | a collision in which two vehicles make contact

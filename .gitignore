@@ -15,5 +15,8 @@ __pycache__/
 .venv/
 venv/
 .ipynb_checkpoints/
-runs/
-results/*.jsonl
+
+# per-run output: the summary and the parameters are worth keeping, the raw
+# rows and the rendered frames are not
+results/**/results.jsonl
+results/**/frames

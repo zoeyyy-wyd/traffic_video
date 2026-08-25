@@ -1,0 +1,62 @@
+# Contradiction pairs -- positives that score with no annotation at all.
+#
+# The negative controls in starter.txt are the only queries that score on day
+# one, because their answer is known in advance. Every positive needs a labelled
+# clip. This set removes that dependency for a useful subset of them.
+#
+# Each pair asks for two properties one road user cannot hold at the same
+# instant: northbound and southbound, turning left and turning right, stopped
+# and never stopped. Ground truth is irrelevant. What is checked is internal:
+#
+#     if a match on side A and a match on side B overlap in time,
+#     the run has contradicted itself.
+#
+# Overlap is read straight off t_start_sec / t_end_sec in results.jsonl, so the
+# score is mechanical. Both halves answering "present" on disjoint intervals is
+# fine -- a clip really can contain a northbound bus and a southbound one.
+#
+# Each pair gets its own axis, so the summary's by-axis table is the alarm:
+#
+#     | pair-heading | 2/2 |     <- both halves matched: check for overlap
+#     | pair-turn    | 1/2 |     <- no contradiction possible
+#
+# Why this pair set and not another: the strongest result so far (F2 in
+# notes/2026-08-20-direction-vs-roi.md) is that the model reads static lane
+# geometry correctly and then assigns the opposite direction of travel. Every
+# pair below is aimed at a property that has to be recovered ACROSS frames --
+# heading, turn, stopping, yielding -- because that is where the failure was.
+# The last pair is the control: a property readable from one frame alone.
+#
+# Run it on a window short enough that a person can check a flagged overlap by
+# eye in a minute, and repeat the run: the same pair contradicting itself on
+# one run and not the next is a variance measurement, which is also missing.
+
+# --- heading: the property F2 says is inverted -----------------------------
+pair-heading | a city bus travelling northbound, up the avenue and away from the camera, through the intersection
+pair-heading | a city bus travelling southbound, down the avenue and toward the camera, through the intersection
+
+# --- turn: same evidence, coarser -------------------------------------------
+pair-turn | an articulated (bendy) city bus that turns left at the intersection
+pair-turn | an articulated (bendy) city bus that turns right at the intersection
+
+# --- stopping: F3 splits one arriving-and-departing object into two ---------
+pair-stop | a bus that comes to a complete stop and then moves off again
+pair-stop | a bus that passes through the intersection without ever coming to a stop
+
+# --- yielding: a relational property, to see whether the effect is motion-
+#     specific or covers cross-frame reasoning generally ---------------------
+pair-yield | a turning vehicle that waited for pedestrians to finish crossing before completing its turn
+pair-yield | a turning vehicle that completed its turn across a crosswalk while pedestrians were still in it
+
+# --- control: a property readable from a single frame ----------------------
+# Static, so a contradiction here is not about cross-frame association and
+# would mean something broader is wrong.
+pair-static | a vehicle stopped with part of its body over the crosswalk markings
+pair-static | a vehicle stopped fully behind the stop line, clear of the crosswalk markings
+
+# --- repeat control: the identical query, asked twice -----------------------
+# Same question, same frames, same call. Two different answers is pure
+# run-to-run variance, measured for the price of one extra call, and every
+# single-sample comparison in the notes so far is uninterpretable without it.
+pair-repeat | an articulated (bendy) city bus passing through the intersection
+pair-repeat | an articulated (bendy) city bus passing through the intersection

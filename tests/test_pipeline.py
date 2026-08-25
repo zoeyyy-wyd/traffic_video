@@ -175,6 +175,70 @@ def main():
     g = overview_grid([(t, im) for t, im in frames], cols=4)
     check("overview grid tiles 4 wide", g.width == 320 * 4, str(g.size))
 
+    # A run directory that does not carry its condition leaves an ablation
+    # loop as a pile of directories separable only by timestamp, and one that
+    # is not unique lets a re-run append to the previous run's rows.
+    print("\nrun directory naming")
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        "vlm_probe", Path(__file__).resolve().parent.parent / "scripts" / "vlm_probe.py")
+    probe_mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(probe_mod)
+
+    class Args:
+        name = queries = query = None
+        roi, fps = "wide", 0.5
+
+    a = Args()
+    a.queries = "queries/starter.txt"
+    check("label carries query set, roi and fps",
+          probe_mod.run_label(a) == "starter-roi-wide-fps0.5", probe_mod.run_label(a))
+    a.roi = "0.28,0.00,0.40,0.42"
+    check("a custom roi does not leak punctuation into the path",
+          probe_mod.run_label(a) == "starter-roi-custom-fps0.5", probe_mod.run_label(a))
+    b = Args()
+    check("no query set -> open mode label",
+          probe_mod.run_label(b) == "open-roi-wide-fps0.5", probe_mod.run_label(b))
+    c = Args()
+    c.name = "ROI ablation #4 / bus"
+    check("--name wins and is slugged",
+          probe_mod.run_label(c) == "roi-ablation-4-bus", probe_mod.run_label(c))
+    check("slug never returns an empty component", probe_mod.slug("///") == "run")
+
+    link_root = tmp / "linktest"
+    (link_root / "results" / "r1").mkdir(parents=True)
+    (link_root / "runs" / "r1").mkdir(parents=True)
+    (link_root / "runs" / "r1" / "a.jpg").write_bytes(b"x")
+    probe_mod.link_frames(link_root / "results" / "r1", link_root / "runs" / "r1")
+    check("frames symlink resolves to the rendered frames",
+          (link_root / "results" / "r1" / "frames" / "a.jpg").exists())
+    probe_mod.link_frames(link_root / "results" / "r1", link_root / "runs" / "r1")
+    check("linking twice is not an error", True)
+
+    print("\nbackend key lookup")
+    import os as _os
+    from utils.env import BACKEND_KEYS, key_status, require_key
+    for backend, names in BACKEND_KEYS.items():
+        # a bare string here iterates as characters, which silently matched
+        # the shell's $_ and made the pre-flight key check a no-op
+        check(f"{backend} key list is a tuple, not a string",
+              isinstance(names, tuple), repr(names))
+    saved = {n: _os.environ.pop(n, None) for n in BACKEND_KEYS["gemini"]}
+    try:
+        require_key("gemini")
+        check("missing gemini key is caught before the SDK call", False)
+    except SystemExit:
+        check("missing gemini key is caught before the SDK call", True)
+    _os.environ[BACKEND_KEYS["gemini"][0]] = "0123456789abcdef"
+    require_key("gemini")
+    check("key_status reports the variable that was actually found",
+          key_status("gemini") == f"{BACKEND_KEYS['gemini'][0]}=***cdef",
+          key_status("gemini"))
+    for n, v in saved.items():
+        _os.environ.pop(n, None)
+        if v is not None:
+            _os.environ[n] = v
+
     # Construct each backend and exercise everything short of the network
     # call. A previous refactor left a dangling name in GeminiBackend.__init__
     # that syntax checks and schema tests both passed straight over.

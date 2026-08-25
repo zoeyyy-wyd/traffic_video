@@ -17,10 +17,10 @@ survived verification against the frames.
 
 | # | run | ROI | window | fps | frames/call | queries | artifacts |
 |---|---|---|---|---|---|---|---|
-| 1 | `full-flash` | `junction` | 0-180 s | 0.5 | 90 | 20/22 (interrupted) | `results/full-flash.jsonl` |
-| 2 | `full-pro` | `junction` | 0-180 s | 0.5 | 90 | 22/22 | `results/full-pro.{jsonl,md}` |
-| 3 | `full-pro-wide` | `wide` | 0-180 s | 0.5 | 90 | 22/22 | `results/full-pro-wide.{jsonl,md}` + `.PARTIAL-aborted.jsonl` (rows 1-2) |
-| 4 | ROI ablation | `none` / `junction` / `wide` | 130-166 s | 0.5 | 18 | 3 x 3 | `results/roi-{none,junction,wide}-bus.{jsonl,md}` |
+| 1 | `full-flash` | `junction` | 0-180 s | 0.5 | 90 | 20/22 (interrupted) | not kept -- jsonl only, gitignored |
+| 2 | `full-pro` | `junction` | 0-180 s | 0.5 | 90 | 22/22 | `results/full-pro/` |
+| 3 | `full-pro-wide` | `wide` | 0-180 s | 0.5 | 90 | 22/22 | `results/full-pro-wide/` (+ an aborted partial, rows 1-2) |
+| 4 | ROI ablation | `none` / `junction` / `wide` | 130-166 s | 0.5 | 18 | 3 x 3 | `results/roi-{none,junction,wide}-bus/` |
 
 Query sets: `queries/starter.txt` (runs 1-3), `queries/bus-direction.txt` (run 4).
 Rendered frames for every run under `runs/<name>/`.
@@ -249,21 +249,20 @@ CLIP=data/12thFBotwinik/L12thFloorBotwinik-D-2025-11-03_T-17_00_01.mp4
 
 # run 2 -- junction crop, full query set
 python scripts/vlm_probe.py $CLIP --queries queries/starter.txt \
-    --roi 0.28,0.00,0.40,0.42 --fps 0.5 \
-    --out runs/full-pro --results results/full-pro
+    --roi 0.28,0.00,0.40,0.42 --fps 0.5 --name full-pro
 
 # run 3 -- same, wide crop
 python scripts/vlm_probe.py $CLIP --queries queries/starter.txt \
-    --roi wide --fps 0.5 \
-    --out runs/full-pro-wide --results results/full-pro-wide
+    --roi wide --fps 0.5 --name full-pro-wide
 
 # run 4 -- ROI ablation on one event
 for R in none junction wide; do
   python scripts/vlm_probe.py $CLIP --queries queries/bus-direction.txt \
-      --start 130 --end 166 --fps 0.5 --roi "$R" \
-      --out "runs/roi-$R-bus" --results "results/roi-$R-bus"
+      --start 130 --end 166 --fps 0.5 --roi "$R" --name "roi-$R-bus"
 done
 ```
 
-`append_jsonl` appends, so every run needs its own `--results` name or two runs
-merge into one file with no way to separate them afterwards.
+These were run before the per-run directory existed, when `--out` and
+`--results` named a frames path and a file prefix and two runs of the same
+command appended into one jsonl. Their output has since been moved to
+`results/<name>/summary.md`; the commands above are the current equivalents.
