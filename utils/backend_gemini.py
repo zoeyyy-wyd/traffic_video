@@ -54,23 +54,25 @@ def _inline_refs(schema: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _usage(interaction) -> Dict[str, Any]:
-    """Best-effort token accounting.
+    """Token accounting off the Interactions API's `usage` object.
 
-    The Interactions API usage field name is not pinned down here, so probe a
-    few shapes and report None rather than inventing a number.
+    Field names read off a real response on 2026-08-28, not guessed. The one
+    that matters and is easy to miss: thinking is billed as output but reported
+    separately from it, so `total_output_tokens` alone understates the cost of
+    a call by a large factor at thinking_level=high. Reported `out` is the sum;
+    the split is kept so a run can see where its output budget went.
     """
-    for attr in ("usage", "usage_metadata"):
-        u = getattr(interaction, attr, None)
-        if u is None:
-            continue
-        for in_k, out_k in (("input_tokens", "output_tokens"),
-                            ("prompt_token_count", "candidates_token_count"),
-                            ("prompt_tokens", "completion_tokens")):
-            i, o = getattr(u, in_k, None), getattr(u, out_k, None)
-            if i is not None:
-                return {"in": i, "out": o or 0,
-                        "price_in": PRICE_IN, "price_out": PRICE_OUT}
-    return {"in": None, "out": None, "price_in": None, "price_out": None}
+    u = getattr(interaction, "usage", None)
+    if u is None:
+        return {"in": None, "out": None, "price_in": None, "price_out": None}
+    tin = getattr(u, "total_input_tokens", None)
+    out = getattr(u, "total_output_tokens", None) or 0
+    think = getattr(u, "total_thought_tokens", None) or 0
+    if tin is None:
+        return {"in": None, "out": None, "price_in": None, "price_out": None}
+    return {"in": tin, "out": out + think, "answer_out": out, "thought": think,
+            "cached": getattr(u, "total_cached_tokens", None) or 0,
+            "price_in": PRICE_IN, "price_out": PRICE_OUT}
 
 
 class GeminiBackend:

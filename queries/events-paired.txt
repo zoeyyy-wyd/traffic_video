@@ -1,0 +1,83 @@
+# Paired event queries -- the first run of the design in
+# notes/2026-08-28-events-worth-asking-about.md section 3.
+#
+# THE POINT. Every query names a situation whose OBJECTS are present in this
+# clip. So two hypotheses predict the same answer to any single query:
+#
+#   H1  the model understands the relation between the actors
+#   H2  the model recognises the objects and writes a fluent sentence about
+#       whatever relation the query named
+#
+# They only come apart in PAIRS. Each pair below names the same objects doing
+# the same coarse thing, and differs only in the relation between them. At any
+# one moment only one side can be true of a given road user.
+#
+#   H1 predicts: one side matches, the other is absent, on disjoint moments.
+#   H2 predicts: both sides match, and often on overlapping intervals.
+#
+# So the pair scores itself. Two matches whose intervals OVERLAP is a
+# self-contradiction, readable straight off t_start_sec / t_end_sec in
+# results.jsonl with no annotation at all. Both sides matching on clearly
+# separate moments is fine and is not evidence of anything -- a clip really can
+# contain one vehicle that yielded and another that was merely queueing.
+#
+# One axis per pair, so the summary's by-axis table is the alarm:
+#
+#     | pair-yield | 2/2 |   <- both sides matched: check for overlap
+#     | pair-cause | 1/2 |   <- no contradiction possible
+#
+# GROUNDING IS THE SECOND SCORE. Every match carries t_start_sec, t_end_sec and
+# clearest_frame_sec, and the frames the model was shown are on disk under
+# runs/<run name>/. A claim is checked by opening the named second. No clip has
+# been labelled for this run, so presence has no ground truth yet -- what is
+# scorable today is the pair contradictions, the negative controls, and whether
+# a claimed moment survives a look.
+#
+# ABSENCE IS A CORRECT ANSWER and the system prompt says so. Several queries
+# here are expected to be absent.
+
+# --- pair: yielding vs queueing --------------------------------------------
+# The same picture: a stationary vehicle, a pedestrian nearby. Only the reason
+# for the stop differs, and no detector output distinguishes them.
+pair-yield | a vehicle that stopped to let a pedestrian cross in front of it, and moved off only after they had passed
+pair-yield | a vehicle that was stopped because the traffic in front of it was not moving, while a pedestrian happened to pass nearby
+
+# --- pair: caused to stop vs stopped anyway --------------------------------
+pair-cause | a vehicle that entered the intersection and had to stop partway because someone was crossing in front of it
+pair-cause | a vehicle that came to a stop partway through the intersection with nobody in front of it
+
+# --- pair: hesitation vs a clean crossing -----------------------------------
+# Hesitation is an action begun and abandoned. A detector has no
+# representation for the abandoning.
+pair-hesitate | a pedestrian who started to step into the roadway, then stopped or stepped back because a vehicle was approaching
+pair-hesitate | a pedestrian who waited at the kerb until the road was clear and then crossed without breaking stride
+
+# --- pair: directing traffic vs merely being present ------------------------
+# The site is under construction and workers in hi-vis are in frame throughout.
+# Whether one is DIRECTING traffic is a fact about how everyone else responds.
+pair-direct | a construction worker signalling to drivers, with a driver visibly doing what they were signalled to do
+pair-direct | a construction worker standing in or beside the roadway while traffic passes, without signalling to anyone
+
+# --- pair: evasive action vs an ordinary close pass -------------------------
+pair-conflict | two road users who came close enough that one of them visibly changed course or speed to avoid the other
+pair-conflict | two road users passing close to one another with neither changing course or speed
+
+# --- pair: turning across a crosswalk, yielded or not -----------------------
+pair-turn | a turning vehicle that waited for pedestrians to finish crossing before completing its turn
+pair-turn | a turning vehicle that completed its turn across a crosswalk while pedestrians were still in it
+
+# --- floor: a rule could also answer these, so they can be scored later -----
+# Present to establish whether the easy end works at all. A correct answer here
+# licenses nothing about the pairs above; a wrong one makes them
+# uninterpretable.
+floor | a vehicle stopped with part of its body on the crosswalk markings
+floor | a pedestrian crossing the roadway outside the crosswalk markings
+floor | a cyclist or e-bike rider riding on the sidewalk rather than in the roadway
+
+# --- negative controls -----------------------------------------------------
+# NOT YET VERIFIED ON THIS CLIP. Absence is asserted from prior, not from a
+# clip review, so a hit here is a candidate fabrication and must be checked
+# against the frames before it is called one.
+negative | a horse-drawn carriage
+negative | a collision in which two vehicles make contact
+negative | a vehicle that has driven up onto the sidewalk

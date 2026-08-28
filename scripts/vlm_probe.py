@@ -14,12 +14,11 @@ appended to a previous run's output.
   # look at what the model would receive -- no API call, no key needed
   python scripts/vlm_probe.py data/clip.mp4 --dry-run
 
-  # a whole recording as one grid, for deriving real ROI coordinates
+  # a whole recording as one grid, to see what the camera covers
   python scripts/vlm_probe.py data/clip.mp4 --overview runs/overview.jpg
 
   # the query probe
   python scripts/vlm_probe.py data/clip.mp4 --start 40 --end 100 \
-      --roi 0.28,0.00,0.40,0.42 \
       --query "a vehicle that entered the intersection and stopped partway
                because someone was crossing in front of it"
 
@@ -52,8 +51,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from utils.env import key_status, load_env, require_key
-from utils.render import (ROI_PRESETS, apply_roi, fit, overview_grid,
-                          parse_roi, stamp)
+from utils.render import fit, overview_grid, stamp
 from utils.schema import QueryResult, WindowResult
 from utils.video import extract, probe, windows
 from utils.vlm import (CHANNELS, DEFAULT_ENCODING, SYSTEM_OPEN, SYSTEM_QUERY,
@@ -64,12 +62,12 @@ def fmt(t):
     return f"{int(t) // 3600:d}:{int(t) // 60 % 60:02d}:{t % 60:05.2f}"
 
 
-def sample_overview(video, start, end, every, roi):
+def sample_overview(video, start, end, every):
     thumbs, t = [], start
     while t < end:
         got = extract(video, t, t + min(1.0, every), 1.0)
         if got:
-            thumbs.append((got[0][0], apply_roi(got[0][1], roi)))
+            thumbs.append(got[0])
         t += every
     return thumbs
 
@@ -86,13 +84,12 @@ def run_label(a):
     Ablations are loops over one flag, so a name that does not carry the
     condition leaves a dozen directories distinguishable only by their
     timestamp. When the caller supplies --name they have said what matters;
-    otherwise the varying levers -- query set, roi, fps -- go in the name.
+    otherwise the varying levers -- query set, fps -- go in the name.
     """
     if a.name:
         return slug(a.name)
     base = Path(a.queries).stem if a.queries else ("query" if a.query else "open")
-    roi = a.roi if a.roi in ROI_PRESETS else "custom"
-    return slug(f"{base}-roi-{roi}-fps{a.fps:g}")
+    return slug(f"{base}-fps{a.fps:g}")
 
 
 def link_frames(run_dir, frames_dir):
@@ -155,7 +152,7 @@ def write_summary(path, a, info, plan, mode, results, usages,
     The terminal output scrolls away and the jsonl is for machines; this is the
     file a person opens next week to remember what was asked and what came
     back, so it records the parameters alongside the answers -- a verdict
-    without its fps, roi and model is not interpretable.
+    without its fps and model is not interpretable.
     """
     L = []
     w = L.append
@@ -165,7 +162,7 @@ def write_summary(path, a, info, plan, mode, results, usages,
       f"({info['width']}x{info['height']}, vfr={info['likely_vfr']})")
     w(f"- timestamps: `{a.time_encoding}` "
       f"(channels: {', '.join(CHANNELS)}, or none)")
-    w(f"- roi: `{a.roi}` | fps: {a.fps:g} | "
+    w(f"- fps: {a.fps:g} | "
       f"{'windows of ' + format(a.window, 'g') + 's' if a.window else 'whole range, one call'}")
     w(f"- frames per call: {len(plan[0][3])} | model: {backend.model} "
       f"(resolution={getattr(backend, 'resolution', '-')}, "
@@ -257,12 +254,6 @@ def parse_args():
                         "situations that turn on a fast moment")
     p.add_argument("--min-frames", type=int, default=2,
                    help="skip windows with fewer frames; one frame shows no motion")
-    p.add_argument("--roi", default="wide",
-                   help="preset name or fractions x,y,w,h. "
-                        "'wide' (default) drops only the brick wall and the "
-                        "facade opposite, which contain no road users; "
-                        "'junction' crops to the intersection box, trading the "
-                        "approaches away for pixels; 'none' sends the full frame")
     p.add_argument("--time-encoding", default=DEFAULT_ENCODING,
                    help="how each frame's timestamp reaches the model, as a "
                         "comma-separated subset of "
@@ -280,7 +271,7 @@ def parse_args():
     p.add_argument("--env", default=None)
     p.add_argument("--name", default=None,
                    help="label for this run, used in its directory name. "
-                        "Default is composed from the query set, roi and fps "
+                        "Default is composed from the query set and fps "
                         "so an ablation loop separates itself")
     p.add_argument("--results-root", default="results",
                    help="parent of the per-run directories")
@@ -325,7 +316,6 @@ def load_queries(a):
 def main():
     a = parse_args()
     try:
-        roi = parse_roi(a.roi)
         enc = parse_encoding(a.time_encoding)
     except ValueError as e:
         sys.exit(str(e))
@@ -341,7 +331,7 @@ def main():
     end = a.end if a.end is not None else (info["duration_s"] or 0.0)
 
     if a.overview:
-        thumbs = sample_overview(a.video, a.start, end, a.overview_every, roi)
+        thumbs = sample_overview(a.video, a.start, end, a.overview_every)
         if not thumbs:
             sys.exit("no frames sampled")
         Path(a.overview).parent.mkdir(parents=True, exist_ok=True)
@@ -381,8 +371,7 @@ def main():
              else [(a.start, end)])
     plan = []
     for t0, t1 in spans:
-        frames = [(t, apply_roi(img, roi)) for t, img in
-                  extract(a.video, t0, t1, a.fps)]
+        frames = extract(a.video, t0, t1, a.fps)
         if len(frames) < a.min_frames:
             continue
         tag = f"{t0:07.2f}-{t1:07.2f}"
@@ -415,8 +404,6 @@ def main():
         "window_sec": a.window,
         "overlap_sec": a.overlap if a.window else None,
         "fps": a.fps,
-        "roi": a.roi,
-        "roi_fractions": list(roi) if roi else None,
         "time_encoding": a.time_encoding,
         "backend": backend.name,
         "model": backend.model,

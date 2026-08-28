@@ -16,7 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from PIL import Image, ImageDraw
 
-from utils.render import LONG_EDGE, apply_roi, contact_sheet, fit, stamp, to_b64
+from utils.render import LONG_EDGE, contact_sheet, fit, stamp, to_b64
 from utils.schema import Detected, QueryMatch, QueryResult, WindowResult
 from utils.video import extract, probe, windows
 
@@ -93,8 +93,6 @@ def main():
 
     print("\nrender")
     img = frames[0][1]
-    cropped = apply_roi(img, (0.10, 0.05, 0.72, 0.95))
-    check("roi crop size", cropped.size == (int(0.72 * W), int(0.95 * H)), str(cropped.size))
     check("fit caps long edge", max(fit(img.resize((4000, 2000))).size) == LONG_EDGE)
     check("stamp preserves size", stamp(img.copy(), "t=1.00s").size == img.size)
     sheet = contact_sheet(frames, 3)
@@ -187,22 +185,19 @@ def main():
 
     class Args:
         name = queries = query = None
-        roi, fps = "wide", 0.5
+        fps = 0.5
 
     a = Args()
-    a.queries = "queries/starter.txt"
-    check("label carries query set, roi and fps",
-          probe_mod.run_label(a) == "starter-roi-wide-fps0.5", probe_mod.run_label(a))
-    a.roi = "0.28,0.00,0.40,0.42"
-    check("a custom roi does not leak punctuation into the path",
-          probe_mod.run_label(a) == "starter-roi-custom-fps0.5", probe_mod.run_label(a))
+    a.queries = "queries/events-paired.txt"
+    check("label carries query set and fps",
+          probe_mod.run_label(a) == "events-paired-fps0.5", probe_mod.run_label(a))
     b = Args()
     check("no query set -> open mode label",
-          probe_mod.run_label(b) == "open-roi-wide-fps0.5", probe_mod.run_label(b))
+          probe_mod.run_label(b) == "open-fps0.5", probe_mod.run_label(b))
     c = Args()
-    c.name = "ROI ablation #4 / bus"
+    c.name = "minimal pairs #4 / yielding"
     check("--name wins and is slugged",
-          probe_mod.run_label(c) == "roi-ablation-4-bus", probe_mod.run_label(c))
+          probe_mod.run_label(c) == "minimal-pairs-4-yielding", probe_mod.run_label(c))
     check("slug never returns an empty component", probe_mod.slug("///") == "run")
 
     link_root = tmp / "linktest"

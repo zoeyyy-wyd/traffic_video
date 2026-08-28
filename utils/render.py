@@ -8,7 +8,7 @@ full-resolution frames are preferred wherever small objects matter.
 import base64
 import io
 import os
-from typing import List, Optional, Sequence, Tuple
+from typing import Sequence, Tuple
 
 from PIL import Image, ImageDraw, ImageFont
 
@@ -26,50 +26,6 @@ def _font(size: int):
         if os.path.exists(path):
             return ImageFont.truetype(path, size)
     return ImageFont.load_default()
-
-
-# Named crops for the 12F-Ams view, as fractional (x, y, w, h) so one setting
-# survives a change of resolution. Derived by eye from a real frame, not
-# guessed -- and the choice between them is a real trade-off, not a free win.
-#
-# A model spends a fixed token budget per image, so whatever is in frame gets
-# squeezed into it: sending a frame that is one third brick wall spends one
-# third of the budget describing brick. But cropping tighter than the scene
-# costs information that no resolution recovers.
-ROI_PRESETS = {
-    # Removes only the host building's wall and the facade opposite -- areas
-    # that provably contain no road users. Keeps every approach, both
-    # sidewalks, and all four crosswalks. This is the defensible default.
-    "wide": (0.17, 0.00, 0.54, 1.00),
-    # The junction box alone. Maximum pixels on the intersection, but it cuts
-    # the southbound approach and both sidewalks, and approach behaviour is
-    # exactly where deceleration -- the evidence for "did it yield" -- happens.
-    # Kept for the ablation, not recommended as a default.
-    "junction": (0.28, 0.00, 0.40, 0.42),
-    "none": None,
-}
-
-
-def parse_roi(spec):
-    """Accept a preset name, 'x,y,w,h', or None."""
-    if spec is None:
-        return None
-    if spec in ROI_PRESETS:
-        return ROI_PRESETS[spec]
-    parts = [float(v) for v in spec.split(",")]
-    if len(parts) != 4:
-        raise ValueError(f"roi must be a preset {sorted(ROI_PRESETS)} "
-                         f"or four fractions x,y,w,h -- got {spec!r}")
-    return tuple(parts)
-
-
-def apply_roi(img: Image.Image, roi: Optional[Sequence[float]]) -> Image.Image:
-    """Crop to a fractional (x, y, w, h) region."""
-    if not roi:
-        return img
-    x, y, w, h = roi
-    W, H = img.size
-    return img.crop((int(x * W), int(y * H), int((x + w) * W), int((y + h) * H)))
 
 
 def stamp(img: Image.Image, text: str) -> Image.Image:
@@ -137,8 +93,8 @@ def overview_grid(thumbs, cols: int = 10, cell_w: int = 320) -> Image.Image:
     """Tile one thumbnail per sampled moment into a single scannable image.
 
     Half an hour of footage becomes one picture a person can read in seconds.
-    Its main job is practical: deriving real ROI coordinates needs a look at
-    an actual frame, and eyeballing a grid beats stepping through a player.
+    Its main job is practical: a look at an actual frame beats stepping
+    through a player when you need to know what the camera covers.
     """
     cells = []
     for t, img in thumbs:

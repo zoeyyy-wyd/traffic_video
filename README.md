@@ -60,17 +60,35 @@ number that explains nothing.
 | **Spatial** | "in the crosswalk", "past the stop line" | mixed | oblique perspective; depth misread as distance |
 | **Temporal** | "when did it cross" | poor | sampling rate; an instant between samples |
 | **Relational** | "the van that failed to yield" | possibly strong | — |
-| **State** | "while the signal was red" | expected to fail | pixels absent, not reasoning absent |
+| **State** | "while the signal was red" | splits — see below | vehicle heads face away; pedestrian heads are legible |
 
-The state axis is the sharpest prediction in this repo, and it is a claim about
-information rather than capability. A signal head occupying three or four pixels
-cannot be read at any level of model quality. What a model does instead is infer
-colour from behaviour — "traffic is stopped, so it must be red" — which is
-circular, confidently stated, and wrong exactly on the marginal cases that
-matter. `utils/schema.py` instruments this directly: every reported event must
+The state axis was the sharpest prediction in this repo — that it fails for
+information reasons, because a signal head spanning three or four pixels cannot
+be read at any level of model quality. **That has been measured, and it is half
+wrong.** The axis splits in two, and the split is decided by how a head is
+mounted rather than by how many pixels it spans
+(measured 2026-08-27; evidence in `notes/figures/2026-08-27-*.png`):
+
+- **Vehicle** heads present only their tops and backs to this camera. Sampled
+  across a whole clip they are pixel-for-pixel invariant, so their state is
+  unavailable at any resolution or tier. They are the *larger* targets, which
+  is why the pixel-count argument was the wrong one.
+- **Pedestrian** heads do show an illuminated face. The state is carried by an
+  8 x 10 patch of the native frame at a 97-point `R − B` separation, and that
+  separation survives every downscale the probe applies — colour is
+  low-frequency, so averaging preserves it while destroying glyph shape. It is
+  resolvable by eye in every condition, night included.
+
+So on the pedestrian phase the pixels are *present*, which makes it a clean
+experiment rather than a flat negative: a wrong answer there cannot be blamed
+on missing evidence. The failure mode still worth instrumenting is the model
+inferring colour from behaviour — "traffic is stopped, so it must be red" —
+which is circular, confidently stated, and wrong exactly on the marginal cases
+that matter. `utils/schema.py` catches it directly: every reported event must
 declare `signal_state_basis` as `read_directly`, `inferred_from_behaviour`, or
-`unknown`, and every window reports `signal_head_visible`. The prediction is
-therefore measurable rather than argued.
+`unknown`, and every window reports `signal_head_visible`. Vehicle-phase
+questions (red-light running) remain unanswerable from this view and need the
+fallbacks in section 5.
 
 ---
 
@@ -83,10 +101,10 @@ survive a change of dataset and explains nothing to anyone.
 
 **A finding:** a capability boundary with a mechanism.
 
-- *"Signal-state judgements fail because the head spans ~3 px after downscaling
-  and faces away on two approaches. Raising effective resolution via ROI
-  cropping moves accuracy from A to B, which locates the bottleneck in
-  perception rather than reasoning."*
+- *"Signal-state judgements fail because the vehicle heads face away from the
+  camera entirely, while the pedestrian heads do not — which locates the
+  bottleneck in mounting geometry rather than in resolution or reasoning, and
+  predicts which of the two remains answerable after any downscaling."*
 - *"Constraining the model to select from a supplied index set drives
   hallucinated locations to zero, because an out-of-range index is rejected
   programmatically rather than trusted."*
@@ -153,13 +171,15 @@ a VLM rather than whether one works.
 
 **Output constraint.** Free-text answers versus selection from a supplied index
 set (Set-of-Mark style: numbered boxes, numbered tiles). Measures hallucination
-rate. `utils/find.py` already implements the constrained form — the model names
-a tile number, indices outside the grid are dropped, and timestamps are derived
-from the index rather than taken from the model.
+rate. The constrained form is not implemented yet: it would have the model name
+a tile number, drop indices outside the grid, and derive timestamps from the
+index rather than take them from the model.
 
-**Visual budget.** ROI crop versus full frame; resolution tier; sampling rate;
-tiled contact sheet versus separate full-resolution frames. Measures where the
-perception bottleneck sits. Every one of these is already a flag on the scripts.
+**Visual budget.** Resolution tier; sampling rate; tiled contact sheet versus
+separate full-resolution frames. Measures where the perception bottleneck sits.
+Frames are sent whole, fitted to a 1568 px long edge; cropping was removed as a
+variable because the properties these queries turn on are low-frequency and
+survive downscaling intact (measured 2026-08-27).
 
 **Timestamp encoding.** Every answer here is a time interval, so how a frame is
 bound to its own timestamp is a lever in its own right. `--time-encoding` takes
@@ -196,7 +216,7 @@ offers.
 What it needs, all one-time per view: a ground-plane homography (the project's
 autocalibration), hand-annotated scene polygons (crosswalks, stop lines, lane
 directions, intersection box), and a signal-phase timeline. On phase reading, a
-fixed-ROI classifier plus a state machine over legal phase transitions is both
+fixed-box classifier plus a state machine over legal phase transitions is both
 cheaper and more accurate than asking a model per frame — but see §5 on whether
 the signal faces are visible at all.
 
@@ -243,19 +263,29 @@ the fallbacks in order are: infer from phase coupling with an approach that is
 visible; detect queue-discharge onset as the green edge; obtain the timing plan
 from NYC DOT.
 
+Measured for the 12F-Ams view on 2026-08-27: **no vehicle head is legible, both
+pedestrian heads are.** The pedestrian phase can therefore be read off a fixed
+box directly — the timeline for one clip is in the note — while every
+vehicle-phase question on this view needs one of the fallbacks above. Note that
+the pedestrian countdown *flashes*, so a two-level classifier reports each dark
+flash as WALK; three states are needed, not two.
+
 **Multi-view is a coverage requirement, not a nicety.** Some regions are
 visible from only certain cameras. Scene annotations should carry
 `visible_from: [view_ids]`, and detection rates must be reported per view —
 otherwise "not visible from this camera" reads as "nothing happens here".
 
-**ROI.** Cropping to the intersection is not cosmetic. Models downscale to a
-fixed long edge, so a frame that is two-thirds wall spends two-thirds of its
-budget on wall; cropping is close to a free 3× gain in effective resolution on
-the subject, and it removes the brick texture and swaying canopy that otherwise
-generate spurious motion energy and detections. `--roi x,y,w,h` takes fractions
-of the frame so one setting survives a change of resolution. **Derive the
-numbers from a real frame** — any value appearing in a usage example here is a
-placeholder.
+**Frames are sent whole.** Models downscale to a fixed long edge, so a frame
+that is two-thirds wall spends two-thirds of its budget on wall, and cropping
+to the intersection would buy back roughly a 2× linear gain on the subject.
+Cropping was nevertheless removed: the properties the queries here turn on —
+where a road user is, which way it went, whether two of them interacted — are
+low-frequency and survive downscaling intact, so the crop bought resolution
+nothing needed while deciding what was in frame at all. That second effect is
+the one that matters, and it cuts the wrong way: the approach legs, where
+deceleration is the evidence for "did it yield", are the first thing a tight
+crop loses. Measured basis:
+the 2026-08-27 measurement, evidence in `notes/figures/`.
 
 ---
 
@@ -266,8 +296,8 @@ One script, `scripts/vlm_probe.py`, in two modes over the same frames.
 ### Query mode — the experiment
 
 ```bash
-python scripts/vlm_probe.py data/12thFBotwinik/<clip>.mp4 \
-    --queries queries/starter.txt --roi 0.28,0.00,0.40,0.42 --fps 0.5
+python scripts/vlm_probe.py videos/<clip>.mp4 \
+    --queries queries/events-paired.txt --fps 0.5
 ```
 
 Queries live in `queries/*.txt`, one per line as `axis | situation`:
@@ -328,11 +358,11 @@ what came back), `results.jsonl` (one row per call, written as each answer
 arrives), `run.json` (every parameter, machine-readable) and a `frames`
 symlink to the images that were actually sent, under `runs/<same name>/`.
 
-`<label>` is `--name`, or `<query set>-roi-<roi>-fps<fps>` when that is not
-given, so `for R in none junction wide; do ... --roi $R; done` separates its
-own arms without naming each one. The timestamp is what stops a re-run of the
-same command from appending to the previous run's rows — a comparison between
-two conditions is worthless if it cannot be told which rows came from which.
+`<label>` is `--name`, or `<query set>-fps<fps>` when that is not given, so an
+ablation loop over one flag separates its own arms as long as `--name` carries
+the condition. The timestamp is what stops a re-run of the same command from
+appending to the previous run's rows — a comparison between two conditions is
+worthless if it cannot be told which rows came from which.
 `run.json` exists for the same reason: ablations are read across runs, and
 grepping a dozen markdown headers is not a comparison.
 
@@ -355,7 +385,7 @@ find violations will produce them.
 ### Before spending a run
 
 ```bash
-# whole recording as one grid -- this is how ROI coordinates get derived
+# whole recording as one grid -- what the camera covers, at a glance
 python scripts/vlm_probe.py data/clip.mp4 --overview runs/overview.jpg
 
 # render what the model would receive, no API call, no key needed
@@ -382,9 +412,7 @@ traffic_video/
 |- results/       # one dir per run: summary.md, results.jsonl, run.json
 |- utils/         # library code only -- importable, no side effects on import
 |   |- video.py       # PTS-based extraction, container probing, windowing
-|   |- render.py      # ROI crop, timestamp stamping, overview grids, base64
-|   |- activity.py    # model-free triage: activity + conflict scores
-|   |- find.py        # coarse temporal grounding: numbered thumbnail grids
+|   |- render.py      # timestamp stamping, downscaling, overview grids, base64
 |   |- schema.py      # pydantic schemas for every model-facing task
 |   |- vlm.py         # shared prompts (open + query) + backend factory
 |   |- backend_gemini.py   # gemini-3.1-pro-preview, Interactions API
@@ -397,7 +425,6 @@ traffic_video/
 |- tests/
 |   |- test_pipeline.py   # synthesises a clip with PyAV; no footage or key needed
 |- requirements.txt
-|- requirements-perception.txt   # Phase 3 only; nothing imports it yet
 ```
 
 **Convention:** `utils/` holds library code only — no argument parsing, no
@@ -415,7 +442,7 @@ conda activate ~/envs/traffic
 pip install -r requirements.txt
 
 cp .env.example .env        # then fill in the key for the backend you use
-python tests/test_pipeline.py && python tests/test_activity.py
+python tests/test_pipeline.py
 ```
 
 `--override-channels -c conda-forge` is required, not stylistic: without it
@@ -437,25 +464,42 @@ explicitly. Shell variables take precedence over the file. `.env` is gitignored.
 0. **The legibility boundary — TODO, and the one that gates the rest.** At what
    apparent object size, in pixels of the native 3840x2160 frame, does an
    attribute stop being recoverable at all? Every design decision below is
-   currently a guess about this number: which ROI preset, which resolution
-   tier, which queries are even askable. Measure it on **one clip** —
+   currently a guess about this number: which resolution tier, which queries
+   are even askable. Measure it on **one clip** —
    instances of one class at near, mid and far depth, boxes measured rather
    than assumed, and the *human* boundary established first at native
    resolution, since §6's rule ("if you cannot resolve the situation yourself,
    the model cannot either") makes that the ceiling. Once it is a number in
-   pixels it stops being a property of a crop and becomes a property of a
+   pixels it stops being a property of the payload and becomes a property of a
    target, and every configuration becomes derivable instead of ablated.
-   Method and consequences: `notes/2026-08-23-what-the-roi-runs-do-not-show.md`
-   §0. Candidate targets: `queries/resolution-limited.txt`.
-1. **Signal-face visibility per approach per view** — gates every state-axis
-   experiment (§5). Answerable in an hour by stepping through frames. Largely
-   subsumed by question 0: the near/far signal-head pair is the cleanest
-   boundary probe in the scene.
+   The one method that avoids hand-labelling: a **generator** shown a tight
+   native-resolution crop of one instance produces the question, its answer and
+   its time; the **answerer** gets the ordinary downscaled payload; the boundary
+   is where the two stop agreeing. The generator must never see the downscaled
+   view, or it will only ask questions that survive it.
+
+   **Partly answered, 2026-08-27**, for the signal-state target: the ceiling is
+   established, and the boundary turned out not to be a size at all. Colour
+   survives every downscale because it is low-frequency; shape survives
+   none of them. So the useful axis for this attribute is *what kind of
+   evidence* an answer rests on, not how many pixels the target spans — which
+   is a better-transferring result than the threshold that was being looked
+   for, but it means the thresholds for the other attribute types (whole small
+   road users, attached objects, lit parts) are still unmeasured. The model
+   half of the measurement has not been run at all.
+1. **Signal-face visibility per approach per view** — **answered for 12F-Ams**
+   (§5, measured 2026-08-27): no vehicle head
+   legible, both pedestrian heads legible, in all five clips including night
+   and the lowest-bitrate one. Still open for the other three views, and the
+   head inventory was made by eye — an automatic sweep found only the
+   intersection's roadworks.
 2. **Track IDs in `labels/all_raw`** — CVAT interpolated annotations usually
    carry them; determines whether Phase 3 association is trivial or a multi-day
    task.
 3. **Timestamp alignment between the 1 fps frames and the raw recordings** (§5).
 4. **Which axes to probe first.** Referential and relational are where a VLM
-   plausibly contributes; state is predicted to fail for information reasons.
-   Spending effort proportional to that expectation is a choice worth making
-   deliberately.
+   plausibly contributes. State was expected to fail for information reasons
+   and no longer is, on the pedestrian phase — it is now the *cheapest* axis to
+   score, because §2's measurement supplies ground truth for it with no
+   labelling and no model. Spending effort proportional to expectation is still
+   a choice worth making deliberately; the expectation has changed.

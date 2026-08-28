@@ -1,7 +1,0 @@
-# ROI ablation set. All three queries target the same object: articulated bus
-# 5444, 130-166s. Verified by eye at 2 fps: it approaches northbound on the
-# southern leg, turns left onto the westbound street, and pulls to the north
-# kerb. Legal. So the negative control below is known-absent.
-negative    | a vehicle driving the wrong way against the flow of traffic
-referential | an articulated (bendy) city bus passing through the intersection
-temporal    | the moment a stopped bus begins to move off
