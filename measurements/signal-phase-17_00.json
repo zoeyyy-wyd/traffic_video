@@ -1,0 +1,52 @@
+{
+  "topic": "pedestrian signal phase timeline",
+  "date": "2026-08-27",
+  "clip": "videos/L12thFloorBotwinik-D-2026-08-25_T-17_00_01.mp4",
+  "head": "ped_E, lit screen at native (2408,395)-(2416,405)",
+  "method": "Read mean(R)-mean(B) and mean luminance over the 8x10 lit screen at 2 fps. Three states, not two: the countdown phase FLASHES, and a two-level threshold silently reports each dark flash as WALK.",
+  "judgement": "The three-state classifier thresholds (R-B > 45 for the hand, luminance above the 55th percentile for the figure) were hand-set on this clip and have not been validated against a second observer or the other pedestrian head. Boundaries are +/- 1 s; the phase LABELS are firmer than the boundaries.",
+  "phases": [
+    {
+      "state": "DONT_WALK",
+      "t_start": 0.0,
+      "t_end": 49.0
+    },
+    {
+      "state": "WALK",
+      "t_start": 49.0,
+      "t_end": 53.0
+    },
+    {
+      "state": "FLASHING",
+      "t_start": 53.0,
+      "t_end": 65.5
+    },
+    {
+      "state": "DONT_WALK",
+      "t_start": 65.5,
+      "t_end": 130.5
+    },
+    {
+      "state": "WALK",
+      "t_start": 130.5,
+      "t_end": 147.5
+    },
+    {
+      "state": "FLASHING",
+      "t_start": 147.5,
+      "t_end": 153.5
+    },
+    {
+      "state": "DONT_WALK",
+      "t_start": 153.5,
+      "t_end": 180.0
+    }
+  ],
+  "cycle_s": 81.5,
+  "cycle_note": "WALK onsets 81.5 s apart, a plausible NYC cycle.",
+  "reliability": {
+    "supports": "Saying which phase a given second falls in, to about +/- 1 s.",
+    "unexplained": "The first WALK is 4.0 s and the second is 17.0 s. Either the classifier merges WALK with early flashes, or the two cycles genuinely differ. Settle this before using the timeline as ground truth for anything that turns on WALK duration.",
+    "unverified": "Which crosswalk this head governs."
+  }
+}

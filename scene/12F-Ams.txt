@@ -1,0 +1,56 @@
+# Scene facts for the 12F-Ams view. WRITE ROUGH NOTES HERE — bullet points,
+# fragments, whatever. scripts/build_scene.py rewrites them into a prompt block
+# and shows you exactly what it changed.
+#
+# Lines starting with # are dropped before the rewrite.
+#
+# Only put things here that are TRUE OF THE CAMERA, not of one clip: layout,
+# which way traffic runs, what is permanently hidden. A clip-specific fact
+# (where the roadworks are today, what the signal was doing at t=130 s) does
+# not belong here — it changes between recordings and would be wrong for four
+# of the five clips.
+#
+# Everything here is fed to the model as fact. Anything wrong becomes a
+# confident wrong label, so write only what you are sure of, and leave out
+# what you are not.
+
+# --- streets and direction of travel ---
+# Written in IMAGE SPACE (up / down / left / right as seen in the frame), not
+# compass directions: which way is north has not been established from this
+# view, and a guessed compass label would be handed to the model as fact. The
+# model sees the frame, so up/down/left/right is unambiguous for it.
+
+The vertical street runs from the top of the frame to the bottom. It is two-way,
+divided by a double yellow line.
+  lanes LEFT of the yellow line: traffic travels DOWN the frame
+  lanes RIGHT of the yellow line: traffic travels UP the frame
+
+The horizontal street crosses it near the top of the frame. It is two-way,
+divided by a yellow line.
+  the UPPER lanes: traffic travels RIGHT to LEFT
+  the LOWER lanes: traffic travels LEFT to RIGHT
+
+# --- what is permanently hidden or hard to see ---
+# Measured, 2026-08-27 / 2026-08-29. Check and delete anything you disagree with.
+
+A sidewalk scaffolding shed covers the sidewalk on the right-hand side of the
+vertical street, below the intersection. Nothing on that sidewalk is visible.
+
+Tree canopy on the left-hand side obscures part of the roadway and the sidewalk
+below the intersection.
+
+# --- signals: where the heads are, which face the camera ---
+# Measured, 2026-08-27. See measurements/signal-legibility.json.
+
+The vehicle signal heads are seen from above and behind. Only their housings and
+visor hoods are visible; no vehicle signal lens can be seen from this camera at
+any time. Do not report the colour of a vehicle signal.
+
+Two pedestrian signal heads ARE legible: their screens face far enough toward
+the camera that the lit glyph is visible as a small coloured patch. Orange means
+the raised hand or a countdown numeral; white means the walking figure. The two
+cannot be told apart by shape at this scale, only by colour.
+
+# --- markings: bike lane, bus stop, parking, turn restrictions ---
+
+

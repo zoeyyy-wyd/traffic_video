@@ -1,0 +1,23 @@
+{
+  "experiment": "scene",
+  "started": "2026-08-29T21:48:44",
+  "held_fixed": {
+    "video": "videos/L12thFloorBotwinik-D-2026-08-25_T-17_00_01.mp4",
+    "queries": "queries/events-key.txt",
+    "fps": 0.5,
+    "common_flags": null
+  },
+  "varied": {
+    "no-scene": "(baseline: no extra flags)",
+    "with-scene": "--scene scene/12F-Ams.built.md"
+  },
+  "repeats": 2,
+  "arms": [
+    {
+      "arm": "no-scene",
+      "rep": 1,
+      "dir": "results/20260829-214844-scene/no-scene/rep1",
+      "exit": 0
+    }
+  ]
+}

@@ -191,13 +191,18 @@ any subset of three independent channels:
 | `list` | one text block naming every timestamp in order | positionally: count to the k-th number |
 | `interleave` | one text block immediately before its own frame | adjacency in the message itself |
 
-`burn,list` is the default and reproduces every run made before the flag
-existed. The interesting arms are `burn` alone, `interleave` alone, and
-`burn,interleave`: the measure is not whether an event is found but whether the
-returned `t_start_sec` / `clearest_frame_sec` land on the right frame, which is
-checkable against the jpgs in `runs/` without a human labelling anything. Note
-that an image content block has no caption or metadata field on either
-provider, so these two are the only places a per-frame timestamp can go.
+`interleave` is the default: it leaves the frame as the camera recorded it and
+puts the binding in the message structure, one timestamp text block immediately
+before its own image block. `burn` is the arm that pays for its binding in
+pixels -- the caption covers scene content and adds synthetic text to an image
+the model is being asked to read literally -- and `burn,list` reproduces every
+run made before this flag existed, if passed explicitly. The interesting arms
+are `burn` alone and `burn,interleave`: the measure is not whether an event is
+found but whether the returned `t_start_sec` / `clearest_frame_sec` land on the
+right frame, which is checkable against the jpgs in `runs/` without a human
+labelling anything. Note that an image content block has no caption or metadata
+field on either provider, so these two are the only places a per-frame
+timestamp can go.
 
 ### Phase 3 — geometry as an instrument
 
@@ -297,7 +302,7 @@ One script, `scripts/vlm_probe.py`, in two modes over the same frames.
 
 ```bash
 python scripts/vlm_probe.py videos/<clip>.mp4 \
-    --queries queries/events-paired.txt --fps 0.5
+    --queries queries/events-key.txt --fps 0.5
 ```
 
 Queries live in `queries/*.txt`, one per line as `axis | situation`:

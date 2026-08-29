@@ -52,6 +52,26 @@ Rules:
 4. Judge only from the frames. Do not assume that a plausible sequence occurred between two frames; if the decisive moment falls in a gap, say so in unreadable_reasons."""
 
 
+def with_scene(system: str, extra: str) -> str:
+    """Append hand-established scene facts to a system prompt.
+
+    Kept as a separate block, introduced as supplied rather than observed, so
+    the model cannot present it back as something it saw. That distinction is
+    the whole risk of supplying context: told that the east lanes run up the
+    frame, a model can report a vehicle "travelling up the frame" without
+    having looked at it, and the answer is then an echo of the prompt wearing
+    the costume of an observation. Run an arm without it before trusting an
+    arm with it.
+    """
+    if not extra or not extra.strip():
+        return system
+    return (system + "\n\nEstablished facts about this camera and intersection, "
+            "supplied to you rather than observed by you. Use them to interpret "
+            "what you see. Do not report any of them back as something you "
+            "observed, and if the frames contradict one, say so.\n\n"
+            + extra.strip())
+
+
 # How a frame's timestamp reaches the model. Three independent channels, so
 # each can be switched on alone and the arms compared on the same frames:
 #
@@ -64,10 +84,14 @@ Rules:
 #   interleave  a text block carrying one timestamp immediately before its own
 #               frame, so the pairing is in the message structure itself
 #
-# `burn,list` is what every run before this flag existed used, and stays the
-# default so an old command reproduces its earlier result.
+# `interleave` is the default. It is the only channel that binds a frame to its
+# time without touching the pixels the model is asked to read: a caption painted
+# over the top-left corner covers scene content and puts synthetic text in an
+# image whose whole point is that it is what the camera recorded. `burn,list` is
+# what every run before this flag existed used, so pass it explicitly to
+# reproduce one.
 CHANNELS = ("burn", "list", "interleave")
-DEFAULT_ENCODING = "burn,list"
+DEFAULT_ENCODING = "interleave"
 
 
 def parse_encoding(spec: str) -> frozenset:

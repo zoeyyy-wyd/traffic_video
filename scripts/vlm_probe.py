@@ -55,7 +55,8 @@ from utils.render import fit, overview_grid, stamp
 from utils.schema import QueryResult, WindowResult
 from utils.video import extract, probe, windows
 from utils.vlm import (CHANNELS, DEFAULT_ENCODING, SYSTEM_OPEN, SYSTEM_QUERY,
-                       get_backend, open_prompt, parse_encoding, query_prompt)
+                       get_backend, open_prompt, parse_encoding, query_prompt,
+                       with_scene)
 
 
 def fmt(t):
@@ -263,6 +264,11 @@ def parse_args():
                         "immediately before its own frame. The channels are "
                         "independent and this is worth an ablation: change "
                         f"one at a time. Default '{DEFAULT_ENCODING}'")
+    p.add_argument("--scene", default=None,
+                   help="file of established scene facts to supply in the "
+                        "system prompt (see scripts/build_scene.py). This is an "
+                        "ablation arm, not a default: supplied context can be "
+                        "echoed back as observation, so run without it too")
     p.add_argument("--backend", choices=["gemini", "claude"], default="gemini")
     p.add_argument("--model", default=None)
     p.add_argument("--max-output-tokens", type=int, default=32000,
@@ -322,6 +328,11 @@ def main():
     # normalised, so the record says what ran rather than how it was typed
     a.time_encoding = ",".join(sorted(enc)) or "none"
     started = datetime.now()
+
+    scene = Path(a.scene).read_text() if a.scene else ""
+    if a.scene:
+        print(f"scene context: {a.scene} ({len(scene.split())} words)")
+    sys_open, sys_query = with_scene(SYSTEM_OPEN, scene), with_scene(SYSTEM_QUERY, scene)
 
     info = probe(a.video)
     print(json.dumps(info, indent=2))
@@ -410,6 +421,8 @@ def main():
         "resolution": getattr(backend, "resolution", None),
         "thinking_level": getattr(backend, "thinking_level", None),
         "max_output_tokens": a.max_output_tokens,
+        "scene_file": a.scene,
+        "scene_words": len(scene.split()),
         "queries_file": a.queries,
         "axis_filter": a.axis,
         "n_queries": len(queries),
@@ -424,7 +437,7 @@ def main():
         payload = [render_frame(t, img, enc) for t, img in frames]
 
         if mode == "open":
-            res, usage = backend.run(SYSTEM_OPEN, payload,
+            res, usage = backend.run(sys_open, payload,
                                      open_prompt(frames, t0, t1, enc),
                                      WindowResult, a.max_output_tokens)
             usages.append(usage)
@@ -442,7 +455,7 @@ def main():
         else:
             for qi, (axis, q) in enumerate(queries):
                 try:
-                    res, usage = backend.run(SYSTEM_QUERY, payload,
+                    res, usage = backend.run(sys_query, payload,
                                              query_prompt(frames, t0, t1, q, enc),
                                              QueryResult, a.max_output_tokens)
                 except Exception as e:

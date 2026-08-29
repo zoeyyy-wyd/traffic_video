@@ -1,0 +1,94 @@
+{
+  "topic": "which signal faces are readable from the 12F-Ams view, and at what size",
+  "date": "2026-08-27",
+  "clips": "all five 2026-08-25 recordings",
+  "method": {
+    "name": "temporal difference to locate the lit face, then colour separation",
+    "detail": "A lit face changes state; its housing does not. Difference two native 3840x2160 frames taken in different states over a candidate head: the pixels that change ARE the lit face, and their bounding box measures it. Read state as mean(R) - mean(B) over that box. For the payload question, downscale by the factors fit() applies and remeasure."
+  },
+  "judgement": "The candidate heads were found by eye; an automatic sweep of the intersection returned only construction workers and cones, so the inventory is 'these are the heads I located', not 'these are all the heads'. The difference threshold that defines the lit face, and the claim that red versus white is 'resolvable by eye' at each scale, are both judgements.",
+  "result": {
+    "vehicle_heads": {
+      "readable": false,
+      "detail": "The mast-arm head over the avenue and the head on the NE corner were sampled every 6 s across the full 180 s. Both are pixel-for-pixel invariant: yellow housing, visor ridges, no lens. The camera looks down on their tops and backs.",
+      "consequence": "Vehicle phase is unavailable at any resolution, tier or model. Not a capability limit — the information is absent. Red-light running, right-turn-on-red and box-blocking therefore have no establishable truth from this view alone.",
+      "note": "These are the LARGER targets in pixels. The pixel-count argument for why signals fail here was the wrong argument; mounting geometry decides it."
+    },
+    "pedestrian_heads": {
+      "readable": true,
+      "heads_found": 2,
+      "detail": "One east, one north-west. Both cycle over the clip and cycle IN PHASE with each other, which rules out a compression artefact: two 8-pixel patches 800 px apart do not fluctuate together by accident.",
+      "lit_glyph_size_native_px": [
+        8,
+        10
+      ],
+      "colour_separation_R_minus_B": {
+        "red_hand": 94.8,
+        "white_figure": -2.0
+      },
+      "head_box_native": {
+        "ped_E_head": [
+          2385,
+          372,
+          2437,
+          414
+        ],
+        "ped_E_lit_screen": [
+          2408,
+          395,
+          2416,
+          405
+        ]
+      }
+    }
+  },
+  "downscale_survival": {
+    "note": "Colour is a low-spatial-frequency property. Downsampling averages, and averaging preserves chroma while destroying shape. Control column is the vehicle head housing, which never changes; ~2 is the noise floor.",
+    "rows": [
+      {
+        "scale": 1.0,
+        "glyph_px_sent": 80.0,
+        "R_minus_B_hand": 83.5,
+        "R_minus_B_figure": 10.8,
+        "separation": 72.7,
+        "control": 2.0
+      },
+      {
+        "scale": 0.73,
+        "glyph_px_sent": 42.2,
+        "R_minus_B_hand": 77.9,
+        "R_minus_B_figure": 17.3,
+        "separation": 60.5,
+        "control": 1.9
+      },
+      {
+        "scale": 0.41,
+        "glyph_px_sent": 13.3,
+        "R_minus_B_hand": 82.6,
+        "R_minus_B_figure": 16.6,
+        "separation": 66.0,
+        "control": 1.9
+      }
+    ],
+    "scale_actually_sent": 0.41,
+    "conclusion": "No decay across the ladder. Red versus white is resolvable by eye at every scale including the one the probe sends; glyph identity (hand vs figure vs numeral) is unresolvable at every scale, including native."
+  },
+  "across_clips": {
+    "note": "Same native box flips colour in all five clips. R-B range over 180 s:",
+    "values": {
+      "09:00": 54.5,
+      "13:30": 51.7,
+      "17:00": 79.3,
+      "17:30": 92.2,
+      "22:00": 80.0
+    },
+    "night": "22:00 is both the night clip and the lowest bitrate (0.84 Mbit/s) and is among the strongest — the lens blooms, so colour gets easier and shape gets harder.",
+    "drift": "The head is framed by the same box in all five clips but off-centre differently in each, so the camera drifts BETWEEN recordings. A fixed-box classifier needs per-clip re-localisation. Drift WITHIN a clip has not been measured."
+  },
+  "figures": "notes/figures/2026-08-27-*.png",
+  "reliability": {
+    "supports": "Reading the pedestrian phase automatically, per clip, at 2 fps. Asserting that vehicle phase is unavailable from this view.",
+    "does_not_support": "Distinguishing the upraised hand from a countdown numeral — that is below the human ceiling at native resolution, checked directly on the flashing phase.",
+    "unverified": "Which crosswalk each of the two pedestrian heads governs. Until that is established the timeline cannot be attached to a particular crossing."
+  }
+}

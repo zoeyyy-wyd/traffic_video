@@ -188,9 +188,9 @@ def main():
         fps = 0.5
 
     a = Args()
-    a.queries = "queries/events-paired.txt"
+    a.queries = "queries/events-key.txt"
     check("label carries query set and fps",
-          probe_mod.run_label(a) == "events-paired-fps0.5", probe_mod.run_label(a))
+          probe_mod.run_label(a) == "events-key-fps0.5", probe_mod.run_label(a))
     b = Args()
     check("no query set -> open mode label",
           probe_mod.run_label(b) == "open-fps0.5", probe_mod.run_label(b))
