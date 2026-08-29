@@ -1,6 +1,6 @@
 {
-  "run": "20260828-005010-events-paired-full",
-  "started": "2026-08-28T00:50:10",
+  "run": "20260829-002257-events-key",
+  "started": "2026-08-29T00:22:57",
   "mode": "query",
   "clip": "videos/L12thFloorBotwinik-D-2026-08-25_T-17_00_01.mp4",
   "video": {
@@ -25,15 +25,15 @@
   "resolution": "high",
   "thinking_level": "high",
   "max_output_tokens": 32000,
-  "queries_file": "queries/events-paired.txt",
+  "queries_file": "queries/events-key.txt",
   "axis_filter": null,
-  "n_queries": 18,
+  "n_queries": 14,
   "n_windows": 1,
   "n_frames": 91,
-  "frames_dir": "runs/20260828-005010-events-paired-full",
-  "finished": "2026-08-28T01:03:16",
-  "calls_ok": 18,
+  "frames_dir": "runs/20260829-002257-events-key",
+  "finished": "2026-08-29T00:33:14",
+  "calls_ok": 14,
   "calls_failed": 0,
-  "tokens_in": 1822405,
-  "tokens_out": 55667
+  "tokens_in": 1417380,
+  "tokens_out": 45048
 }

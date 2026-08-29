@@ -81,3 +81,16 @@ floor | a cyclist or e-bike rider riding on the sidewalk rather than in the road
 negative | a horse-drawn carriage
 negative | a collision in which two vehicles make contact
 negative | a vehicle that has driven up onto the sidewalk
+
+
+stop-pickup    | a vehicle stopped at the kerb with a person getting in or out of it
+    occurred:
+      1)  t=   00:16     -     00:33     s   who:                              ?:
+      2)  t=        -          s   who:                              ?:
+      3)  t=        -          s   who:                              ?:
+
+stop-midturn   | a vehicle stopped part-way through a turn
+    occurred:
+      1)  t=    00:37    -     00:41     s   who:                              ?:
+      2)  t=    01:33    -     01:46     s   who:                              ?:
+      3)  t=    02:07    -     02:10     s   who: 
