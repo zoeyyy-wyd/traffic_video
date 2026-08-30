@@ -184,16 +184,24 @@ def main():
     spec.loader.exec_module(probe_mod)
 
     class Args:
-        name = queries = query = None
+        name = queries = query = scene = window = None
         fps = 0.5
+        samples = 1
+        batch_queries = False
+        video = "videos/L12thFloorBotwinik-D-2026-08-25_T-17_00_01.mp4"
 
     a = Args()
     a.queries = "queries/events-key.txt"
-    check("label carries query set and fps",
-          probe_mod.run_label(a) == "events-key-fps0.5", probe_mod.run_label(a))
+    check("label carries query set, clip and fps",
+          probe_mod.run_label(a) == "events-key_0825-1700_fps0.5", probe_mod.run_label(a))
+    a.samples, a.batch_queries, a.scene = 5, True, "scene/x.md"
+    check("label carries samples, batch and scene",
+          probe_mod.run_label(a) == "events-key_0825-1700_fps0.5_n5_batch_scene",
+          probe_mod.run_label(a))
+    a.samples, a.batch_queries, a.scene = 1, False, None
     b = Args()
     check("no query set -> open mode label",
-          probe_mod.run_label(b) == "open-fps0.5", probe_mod.run_label(b))
+          probe_mod.run_label(b) == "open_0825-1700_fps0.5", probe_mod.run_label(b))
     c = Args()
     c.name = "minimal pairs #4 / yielding"
     check("--name wins and is slugged",

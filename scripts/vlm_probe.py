@@ -52,11 +52,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from utils.env import key_status, load_env, require_key
 from utils.render import fit, overview_grid, stamp
-from utils.schema import QueryResult, WindowResult
+from utils.schema import BatchQueryResult, QueryResult, WindowResult
 from utils.video import extract, probe, windows
 from utils.vlm import (CHANNELS, DEFAULT_ENCODING, SYSTEM_OPEN, SYSTEM_QUERY,
-                       get_backend, open_prompt, parse_encoding, query_prompt,
-                       with_scene)
+                       batch_query_prompt, get_backend, open_prompt,
+                       parse_encoding, query_prompt, with_scene)
 
 
 def fmt(t):
@@ -79,18 +79,38 @@ def slug(text):
     return re.sub(r"-{2,}", "-", text).strip("-.") or "run"
 
 
-def run_label(a):
-    """The part of the run directory name that says what was run.
+def clip_tag(video):
+    """Shortest thing that identifies which recording this was.
 
-    Ablations are loops over one flag, so a name that does not carry the
-    condition leaves a dozen directories distinguishable only by their
-    timestamp. When the caller supplies --name they have said what matters;
-    otherwise the varying levers -- query set, fps -- go in the name.
+    The date and time in the filename are what distinguish one clip from
+    another; the camera name is the same for all of them and carries nothing.
+    """
+    stem = Path(video).stem
+    m = re.search(r"(\d{4})-(\d{2})-(\d{2})_T-(\d{2})_(\d{2})", stem)
+    return f"{m.group(2)}{m.group(3)}-{m.group(4)}{m.group(5)}" if m else slug(stem)[:16]
+
+
+def run_label(a):
+    """Directory name that says what was run, readable without opening it.
+
+    A directory called `20260829-214844-scene` tells you when it ran and
+    nothing about what it was. The condition goes first and the timestamp last:
+    the timestamp is only there to keep two runs of the same configuration
+    apart, and it is the least interesting thing about a run.
     """
     if a.name:
         return slug(a.name)
     base = Path(a.queries).stem if a.queries else ("query" if a.query else "open")
-    return slug(f"{base}-fps{a.fps:g}")
+    parts = [base, clip_tag(a.video), f"fps{a.fps:g}"]
+    if getattr(a, "samples", 1) > 1:
+        parts.append(f"n{a.samples}")
+    if getattr(a, "batch_queries", False):
+        parts.append("batch")
+    if getattr(a, "scene", None):
+        parts.append("scene")
+    if a.window:
+        parts.append(f"win{a.window:g}")
+    return slug("_".join(parts))
 
 
 def link_frames(run_dir, frames_dir):
@@ -171,24 +191,45 @@ def write_summary(path, a, info, plan, mode, results, usages,
     w(f"- frames written to `{frames_dir}`\n")
 
     if mode == "query":
-        axes = {}
+        # group by query, so repeated samples of one query stay together and a
+        # split verdict is visible as a split rather than averaged into a rate
+        per_q = {}
         for r in results:
-            d = axes.setdefault(r["axis"], {"n": 0, "hit": 0})
-            d["n"] += 1
-            d["hit"] += bool(r["matches"])
+            per_q.setdefault((r["axis"], r["query"]), []).append(bool(r["matches"]))
+        axes = {}
+        for (ax, _), hits in per_q.items():
+            d = axes.setdefault(ax, {"q": 0, "all": 0, "none": 0, "split": 0})
+            d["q"] += 1
+            d["all"] += all(hits)
+            d["none"] += not any(hits)
+            d["split"] += (any(hits) and not all(hits))
+        nsamp = max(len(v) for v in per_q.values()) if per_q else 1
         w("## by axis\n")
-        w("| axis | answered present | note |")
-        w("|---|---|---|")
+        if nsamp > 1:
+            w(f"{nsamp} samples per query. **split** = the samples disagreed with "
+              f"each other, so that query has no stable answer on these frames "
+              f"and must not be counted either way.\n")
+        w("| axis | all samples present | all absent | split | note |")
+        w("|---|---|---|---|---|")
         for ax in sorted(axes):
             d = axes[ax]
-            note = ("**every hit here is a fabrication**"
-                    if ax == "negative" and d["hit"] else
+            note = ("**a hit here is a fabrication**"
+                    if ax == "negative" and d["all"] else
                     "ground truth known: all absent" if ax == "negative" else "")
-            w(f"| {ax} | {d['hit']}/{d['n']} | {note} |")
+            w(f"| {ax} | {d['all']}/{d['q']} | {d['none']}/{d['q']} | "
+              f"{d['split']}/{d['q']} | {note} |")
         w("")
+        split = [f"{ax} — {q[:60]}" for (ax, q), h in per_q.items()
+                 if any(h) and not all(h)]
+        if split:
+            w("### queries whose samples disagreed\n")
+            for line in split:
+                w(f"- {line}")
+            w("")
         w("## per query\n")
         for r in results:
-            w(f"### [{r['axis']}] {r['query']}\n")
+            tag = f" (sample {r['sample']})" if r.get("sample") and nsamp > 1 else ""
+            w(f"### [{r['axis']}] {r['query']}{tag}\n")
             if r["matches"]:
                 for m in r["matches"]:
                     w(f"- **match** `{m['match_quality']}` / conf "
@@ -264,6 +305,23 @@ def parse_args():
                         "immediately before its own frame. The channels are "
                         "independent and this is worth an ablation: change "
                         f"one at a time. Default '{DEFAULT_ENCODING}'")
+    p.add_argument("--batch-queries", action="store_true",
+                   help="ask every query in ONE call instead of one call each. "
+                        "The frames are then sent once rather than once per "
+                        "query, which is a saving of exactly the query count -- "
+                        "with 10 queries, 91 images instead of 910. The cost is "
+                        "that the queries stop being independent: the model sees "
+                        "all of them together and one answer can inform another. "
+                        "That is a change in the measurement, so it is off by "
+                        "default and worth an arm of its own")
+    p.add_argument("--samples", type=int, default=1,
+                   help="independent answers to draw per query. Each is its own "
+                        "call, so cost scales with it -- there is no free "
+                        "multi-sample on this API (candidate_count returns one "
+                        "output; chaining interactions re-bills the images). "
+                        "Worth paying for: at n=1 an answer cannot be told from "
+                        "a coin flip, and this probe has already produced "
+                        "different answers to the same query on the same frames")
     p.add_argument("--scene", default=None,
                    help="file of established scene facts to supply in the "
                         "system prompt (see scripts/build_scene.py). This is an "
@@ -362,7 +420,7 @@ def main():
     # caller having to remember one, which is what previously turned two runs
     # of the same command into a single jsonl with no way to separate them.
     run_dir = (Path(a.run_dir) if a.run_dir else
-               Path(a.results_root) / f"{started:%Y%m%d-%H%M%S}-{run_label(a)}")
+               Path(a.results_root) / f"{run_label(a)}_{started:%m%d-%H%M}")
     out = Path(a.out) if a.out else Path("runs") / run_dir.name
     out.mkdir(parents=True, exist_ok=True)
     jsonl_path = run_dir / "results.jsonl"
@@ -425,6 +483,8 @@ def main():
         "scene_words": len(scene.split()),
         "queries_file": a.queries,
         "axis_filter": a.axis,
+        "samples_per_query": a.samples,
+        "batch_queries": a.batch_queries,
         "n_queries": len(queries),
         "n_windows": len(plan),
         "n_frames": nframes,
@@ -453,41 +513,97 @@ def main():
                       f"signal={e.signal_state_claimed} ({e.signal_state_basis})")
                 print(f"    {e.what_happened}")
         else:
+            if a.batch_queries:
+                for sample in range(1, a.samples + 1):
+                    try:
+                        res, usage = backend.run(
+                            sys_query, payload,
+                            batch_query_prompt(frames, t0, t1, queries, enc),
+                            BatchQueryResult, a.max_output_tokens)
+                    except Exception as e:
+                        failures.append({"axis": "*batch*", "query": f"all {len(queries)}",
+                                         "sample": sample,
+                                         "error": f"{type(e).__name__}: {e}"})
+                        print(f"\nbatch s{sample}  FAILED  {type(e).__name__}: {str(e)[:140]}")
+                        continue
+                    usages.append(usage)
+                    got = {ans.query_index for ans in res.answers}
+                    missing = [i for i in range(len(queries)) if i not in got]
+                    if missing:
+                        # A batched call that silently drops a query would look
+                        # like "absent" downstream, which is a different claim.
+                        print(f"\n!! batch s{sample}: {len(missing)} quer"
+                              f"{'y' if len(missing)==1 else 'ies'} not answered "
+                              f"-- indices {missing}. Recorded as failures, not as absent.")
+                        for i in missing:
+                            failures.append({"axis": queries[i][0], "query": queries[i][1],
+                                             "sample": sample, "error": "not answered in batch"})
+                    print(f"\n--- batch sample {sample} ---")
+                    for ans in sorted(res.answers, key=lambda x: x.query_index):
+                        if not 0 <= ans.query_index < len(queries):
+                            print(f"  !! query_index {ans.query_index} out of range, dropped")
+                            continue
+                        axis, q = queries[ans.query_index]
+                        d = ans.model_dump(); d.pop("query_index", None)
+                        rec = {"window": [t0, t1], "mode": "query",
+                               "time_encoding": a.time_encoding,
+                               "query_index": ans.query_index, "sample": sample,
+                               "batched": True, "axis": axis, "query": q, **d}
+                        results.append(rec)
+                        append_jsonl(jsonl_path, rec)
+                        mark = "  <-- FABRICATED" if (ans.matches and axis == "negative") else ""
+                        print(f"  [{axis}] {'MATCH' if ans.matches else 'absent'}{mark}"
+                              f"  {q[:52]}")
+                        for m in ans.matches:
+                            print(f"      {m.t_start_sec:.1f}-{m.t_end_sec:.1f}s "
+                                  f"(clearest {m.clearest_frame_sec:.1f}s)  {m.subject}")
+                continue
+
             for qi, (axis, q) in enumerate(queries):
-                try:
-                    res, usage = backend.run(sys_query, payload,
-                                             query_prompt(frames, t0, t1, q, enc),
-                                             QueryResult, a.max_output_tokens)
-                except Exception as e:
-                    # One bad call must not discard the answers already in
-                    # hand. Record the failure as a row and keep going.
-                    failures.append({"axis": axis, "query": q,
-                                     "error": f"{type(e).__name__}: {e}"})
-                    append_jsonl(jsonl_path, {"window": [t0, t1], "mode": "query",
-                                              "time_encoding": a.time_encoding,
-                                              "query_index": qi, "axis": axis,
-                                              "query": q, "error": str(e)})
-                    print(f"\n[{axis}] {q[:64]}\n  FAILED  {type(e).__name__}: "
-                          f"{str(e)[:160]}")
-                    continue
-                usages.append(usage)
-                rec = {"window": [t0, t1], "mode": "query",
-                       "time_encoding": a.time_encoding, "query_index": qi,
-                       "axis": axis, "query": q, **res.model_dump()}
-                results.append(rec)
-                append_jsonl(jsonl_path, rec)
-                verdict = "MATCH" if res.matches else "absent"
-                mark = "  <-- FABRICATED" if (res.matches and axis == "negative") else ""
-                print(f"\n[{axis}] {q[:64]}\n  {verdict}{mark}")
-                for m in res.matches:
-                    print(f"    [{m.match_quality}/{m.confidence}] "
-                          f"{m.t_start_sec:.1f}-{m.t_end_sec:.1f}s "
-                          f"(clearest {m.clearest_frame_sec:.1f}s)  {m.subject}")
-                    print(f"    {m.what_happens}")
-                if res.considered_and_rejected:
-                    print(f"    ruled out: {res.considered_and_rejected[:160]}")
-                if not res.matches and res.why_not_found:
-                    print(f"    why not: {res.why_not_found[:160]}")
+                print(f"\n[{axis}] {q[:64]}")
+                verdicts = []
+                for sample in range(1, a.samples + 1):
+                    try:
+                        res, usage = backend.run(sys_query, payload,
+                                                 query_prompt(frames, t0, t1, q, enc),
+                                                 QueryResult, a.max_output_tokens)
+                    except Exception as e:
+                        # One bad call must not discard the answers already in
+                        # hand. Record the failure as a row and keep going.
+                        failures.append({"axis": axis, "query": q, "sample": sample,
+                                         "error": f"{type(e).__name__}: {e}"})
+                        append_jsonl(jsonl_path, {"window": [t0, t1], "mode": "query",
+                                                  "time_encoding": a.time_encoding,
+                                                  "query_index": qi, "sample": sample,
+                                                  "axis": axis, "query": q,
+                                                  "error": str(e)})
+                        print(f"  s{sample}  FAILED  {type(e).__name__}: "
+                              f"{str(e)[:140]}")
+                        continue
+                    usages.append(usage)
+                    rec = {"window": [t0, t1], "mode": "query",
+                           "time_encoding": a.time_encoding, "query_index": qi,
+                           "sample": sample, "axis": axis, "query": q,
+                           **res.model_dump()}
+                    results.append(rec)
+                    append_jsonl(jsonl_path, rec)
+                    verdict = "MATCH" if res.matches else "absent"
+                    verdicts.append(verdict)
+                    mark = "  <-- FABRICATED" if (res.matches and axis == "negative") else ""
+                    tag = f"  s{sample}" if a.samples > 1 else "  "
+                    print(f"{tag}{verdict}{mark}")
+                    for m in res.matches:
+                        print(f"      [{m.match_quality}/{m.confidence}] "
+                              f"{m.t_start_sec:.1f}-{m.t_end_sec:.1f}s "
+                              f"(clearest {m.clearest_frame_sec:.1f}s)  {m.subject}")
+                        print(f"      {m.what_happens}")
+                    if not res.matches and res.why_not_found:
+                        print(f"      why not: {res.why_not_found[:150]}")
+                # Disagreement across samples is not a detail to average away:
+                # it means the verdict for this query is a draw, not a reading.
+                if len(set(verdicts)) > 1:
+                    print(f"  !! samples DISAGREE: {'/'.join(verdicts)} "
+                          f"-- this query has no stable answer on these frames")
 
     print("\n" + "=" * 60)
     if failures:

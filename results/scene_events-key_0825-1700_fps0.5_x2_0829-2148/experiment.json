@@ -18,6 +18,24 @@
       "rep": 1,
       "dir": "results/20260829-214844-scene/no-scene/rep1",
       "exit": 0
+    },
+    {
+      "arm": "no-scene",
+      "rep": 2,
+      "dir": "results/20260829-214844-scene/no-scene/rep2",
+      "exit": 0
+    },
+    {
+      "arm": "with-scene",
+      "rep": 1,
+      "dir": "results/20260829-214844-scene/with-scene/rep1",
+      "exit": 0
+    },
+    {
+      "arm": "with-scene",
+      "rep": 2,
+      "dir": "results/20260829-214844-scene/with-scene/rep2",
+      "exit": 0
     }
   ]
 }

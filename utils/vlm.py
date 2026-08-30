@@ -144,6 +144,25 @@ def query_prompt(frames, t0: float, t1: float, query: str,
             f"t_start_sec / t_end_sec / clearest_frame_sec.")
 
 
+def batch_query_prompt(frames, t0: float, t1: float, queries, enc: frozenset) -> str:
+    """One call, every query. `queries` is [(axis, text)]."""
+    lines = [frames_text(frames, t0, t1, enc), "",
+             f"Below are {len(queries)} independent situations. Decide for EACH "
+             f"one separately whether it occurs in these frames.", ""]
+    for i, (_, q) in enumerate(queries):
+        lines.append(f"[{i}] {q}")
+    lines += ["",
+              "Return one answer per situation, each carrying its own "
+              "query_index from the list above. Answer every one, including the "
+              "ones that do not occur -- an empty matches list is the correct "
+              "answer for those. Judge each situation on its own evidence: that "
+              "one situation occurs is not a reason for another to, and finding "
+              "nothing for several in a row is expected.",
+              "Use the frame timestamps for t_start_sec / t_end_sec / "
+              "clearest_frame_sec."]
+    return "\n".join(lines)
+
+
 def get_backend(name: str, model: str = None):
     """Factory. Backends are imported lazily so neither SDK is a hard dep."""
     if name == "gemini":

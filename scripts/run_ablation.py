@@ -65,7 +65,12 @@ def main():
     ap.add_argument("--name", required=True, help="what this ablation is called")
     ap.add_argument("--arm", action="append", required=True,
                     help="NAME=extra probe flags. Repeatable. Empty flags = baseline")
-    ap.add_argument("--repeat", type=int, default=1)
+    ap.add_argument("--repeat", type=int, default=1,
+                    help="whole-run repeats. Prefer --samples on the probe: it "
+                         "draws several answers per query in one run, which is "
+                         "the same information without a second decode")
+    ap.add_argument("--samples", type=int, default=1,
+                    help="answers per query, passed through to the probe")
     ap.add_argument("--fps", type=float, default=0.5)
     ap.add_argument("--common", default="", help="flags applied to every arm")
     ap.add_argument("--dry-run", action="store_true")
@@ -78,14 +83,24 @@ def main():
         n, _, flags = spec.partition("=")
         arms.append((n.strip(), flags.strip()))
 
-    ts = datetime.now().strftime("%Y%m%d-%H%M%S")
-    exp = ROOT / "results" / f"{ts}-{a.name}"
+    stem = Path(a.video).stem
+    m = __import__("re").search(r"(\d{2})-(\d{2})_T-(\d{2})_(\d{2})", stem)
+    clip = f"{m.group(1)}{m.group(2)}-{m.group(3)}{m.group(4)}" if m else "clip"
+    qs = Path(a.queries).stem
+    ts = datetime.now().strftime("%m%d-%H%M")
+    tag = f"{a.name}_{qs}_{clip}_fps{a.fps:g}"
+    if a.samples > 1:
+        tag += f"_n{a.samples}"
+    if a.repeat > 1:
+        tag += f"_x{a.repeat}"
+    exp = ROOT / "results" / f"{tag}_{ts}"
     exp.mkdir(parents=True, exist_ok=True)
 
     manifest = {
         "experiment": a.name,
         "started": datetime.now().isoformat(timespec="seconds"),
         "held_fixed": {"video": a.video, "queries": a.queries, "fps": a.fps,
+                       "samples_per_query": a.samples,
                        "common_flags": a.common or None},
         "varied": {n: (f or "(baseline: no extra flags)") for n, f in arms},
         "repeats": a.repeat,
@@ -97,10 +112,12 @@ def main():
     for name, flags in arms:
         for rep in range(1, a.repeat + 1):
             rd = exp / name / f"rep{rep}"
-            out = ROOT / "runs" / f"{ts}-{a.name}" / name / f"rep{rep}"
+            out = ROOT / "runs" / f"{tag}_{ts}" / name / f"rep{rep}"
             cmd = [sys.executable, str(ROOT / "scripts" / "vlm_probe.py"), a.video,
                    "--queries", a.queries, "--fps", str(a.fps),
                    "--run-dir", str(rd), "--out", str(out)]
+            if a.samples > 1:
+                cmd += ["--samples", str(a.samples)]
             cmd += a.common.split() + flags.split()
             print(f"--- {name} rep{rep}\n    {' '.join(cmd[1:])}")
             if a.dry_run:

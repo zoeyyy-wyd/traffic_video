@@ -74,3 +74,27 @@ class QueryResult(BaseModel):
     # "happened but could not be seen", which are different results.
     why_not_found: str
     unreadable_reasons: List[str]
+
+
+class QueryAnswer(QueryResult):
+    """One query's answer inside a batched call.
+
+    `query_index` is what makes the batch usable: the model is asked several
+    questions in one request and must say which answer belongs to which, rather
+    than relying on list order, which it is free to permute or truncate.
+    """
+
+    query_index: int
+
+
+class BatchQueryResult(BaseModel):
+    """Answers to every query in one call, over one set of frames.
+
+    Sending the frames once instead of once per query is the difference between
+    paying for N x M images and paying for M. The cost is that the queries are
+    no longer independent -- the model sees all of them at once and can let one
+    answer inform another. That is a real change in what is being measured, not
+    a free optimisation, so it is a flag rather than the default.
+    """
+
+    answers: List[QueryAnswer]
