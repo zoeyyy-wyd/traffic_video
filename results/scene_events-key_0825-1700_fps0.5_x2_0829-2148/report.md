@@ -46,10 +46,15 @@ The two least stable categories are the two shortest. That is consistent with
 sampling, not with the model: an event that falls between frames is not
 "missed", it is absent from the payload.
 
-**0.5 fps is below what this category set needs.** Three to four frames inside
-an event is the minimum for placing its start and end, which puts the floor at
-1 fps and comfortable at 2 fps. This is the confound to remove before the scene
-question is asked again.
+**0.5 fps is below what this category set needs**, if you want an event's start
+and end placed: three to four frames inside it is the minimum, which puts the
+floor at 1 fps.
+
+**But the causal claim in this section is wrong, and later runs killed it.**
+Raising the rate to 1 fps and then 2 fps did not reduce the disagreement, and
+the hit rate fell monotonically instead of rising — five categories down, three
+level, none up. The instability is not a sampling artefact. See
+[`notes/2026-08-30-answers-are-unstable.md`](../../notes/2026-08-30-answers-are-unstable.md).
 
 (The durations are the model's own claims, not ground truth. They bound the
 scale of the events being looked for, which is all they are used for here.)
