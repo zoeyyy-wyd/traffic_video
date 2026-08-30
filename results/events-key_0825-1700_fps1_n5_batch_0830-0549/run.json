@@ -34,5 +34,10 @@
   "n_queries": 10,
   "n_windows": 1,
   "n_frames": 181,
-  "frames_dir": "runs/events-key_0825-1700_fps1_n5_batch_0830-0549"
+  "frames_dir": "runs/events-key_0825-1700_fps1_n5_batch_0830-0549",
+  "finished": "2026-08-30T05:57:43",
+  "calls_ok": 5,
+  "calls_failed": 0,
+  "tokens_in": 1006625,
+  "tokens_out": 46145
 }
