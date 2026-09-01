@@ -39,11 +39,6 @@ HEAD = """# GROUND TRUTH — {clip}
 #
 #   t=  start and end, seconds from clip start
 #   who: the road user, specific enough that someone else finds the same one
-#   ph: pedestrian phase at that moment, for the crosswalk involved:
-#       W = white walking figure, F = flashing countdown, R = red hand, - = n/a
-#       Only needed where the phase changes what the event means (a vehicle on
-#       the crosswalk markings obstructs nobody under a red hand). Leave `-`
-#       everywhere else; it is also recoverable from the measured timeline.
 #   ?:  certain | probable | ambiguous  (ambiguous is recorded, not scored)
 #
 # MULTI-LABEL: an instance may satisfy several categories. Record it under
@@ -77,7 +72,7 @@ TAIL = """
 #   t=        -          s
 """
 
-SLOT = "      {i})  t=        -          s   who:                        ph:      ?:"
+SLOT = "      {i})  t=        -          s   who:                              ?:"
 
 
 def filled(path: Path) -> bool:

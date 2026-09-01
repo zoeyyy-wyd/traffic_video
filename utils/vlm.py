@@ -35,21 +35,25 @@ Local rules: right turn on red is prohibited in NYC unless a sign permits it. Cy
 
 List in unreadable_reasons anything you needed but could not resolve (signal facing away, object too small, occluded by the shed or tree canopy, motion blur)."""
 
-SYSTEM_QUERY = f"""You are given frames from fixed-camera intersection footage and a description of a situation. Decide whether that situation occurs in these frames, and if so, when and to whom.
+SYSTEM_QUERY = f"""You are given frames from fixed-camera intersection footage and one or more descriptions of things that may happen in it. For each description, decide whether it occurs in these frames, and if so, every time it occurs and to whom.
 
 {_SCENE}
 
-The description names a situation, not an object. It may involve several road users, a sequence over several seconds, or an outcome. Matching it means the sequence actually happened -- not that the pieces are visible somewhere in frame.
+A description names something observable -- a road user doing something, or a state of the scene. Matching it means you saw that thing, not that its ingredients are present somewhere in frame.
 
 Rules:
 
-1. "Not present" is a correct and expected answer, and many queries are deliberately for situations that did not occur. Return an empty matches list and explain in why_not_found what was absent. Never stretch a partial resemblance into a match to be helpful.
+1. **Report EVERY occurrence, not the clearest one.** If the same kind of thing happens four times, return four matches, each with its own interval and subject. A description is a category, not a single event, and stopping after the first instance is the most common way to be wrong here. Only if it never happens is the matches list empty.
 
-2. Distinguish what you matched on. If the described sequence is visible, that is "exact". If part of it is visible but the decisive moment is not, that is "partial". If the actors and setting are present but the described interaction is not something you actually observed, that is "superficial" -- report it as such rather than as a match.
+2. "Not present" is a correct and expected answer, and some descriptions are deliberately for things that did not occur. Return an empty matches list and say in why_not_found what was absent. Never stretch a partial resemblance into a match to be helpful.
 
-3. Fill considered_and_rejected with the candidates you examined and ruled out, and why. If the scene contains near-misses of the query, they belong here.
+3. Every condition in the description has to hold, not just the recognisable part of it. A description that names an object AND a state -- a vehicle with its lights flashing, a bus with people boarding -- is not satisfied by the object alone. If the object is there and the state is not, that is not a match; put it in considered_and_rejected and say which condition failed.
 
-4. Judge only from the frames. Do not assume that a plausible sequence occurred between two frames; if the decisive moment falls in a gap, say so in unreadable_reasons."""
+4. Distinguish what you matched on. Seen plainly is "exact". Part of it visible but the decisive moment not, "partial". Actors and setting present but the described thing not actually observed, "superficial" -- report that rather than a match.
+
+5. Fill considered_and_rejected with what you examined and ruled out, and why. Near-misses belong there. Do not put a genuine occurrence there: if it satisfies the description, it belongs in matches.
+
+6. Judge only from the frames. Do not assume something happened between two frames; if the decisive moment falls in a gap, say so in unreadable_reasons."""
 
 
 def with_scene(system: str, extra: str) -> str:
@@ -139,8 +143,9 @@ def open_prompt(frames, t0: float, t1: float, enc: frozenset) -> str:
 def query_prompt(frames, t0: float, t1: float, query: str,
                  enc: frozenset) -> str:
     return (frames_text(frames, t0, t1, enc) +
-            f"\n\nSituation to locate:\n  {query}\n\n"
-            f"Does it occur in these frames? Use these timestamps for "
+            f"\n\nWhat to look for:\n  {query}\n\n"
+            f"Does it occur in these frames? Return EVERY occurrence, one match "
+            f"each -- not only the clearest. Use these timestamps for "
             f"t_start_sec / t_end_sec / clearest_frame_sec.")
 
 
@@ -152,12 +157,20 @@ def batch_query_prompt(frames, t0: float, t1: float, queries, enc: frozenset) ->
     for i, (_, q) in enumerate(queries):
         lines.append(f"[{i}] {q}")
     lines += ["",
-              "Return one answer per situation, each carrying its own "
-              "query_index from the list above. Answer every one, including the "
-              "ones that do not occur -- an empty matches list is the correct "
-              "answer for those. Judge each situation on its own evidence: that "
-              "one situation occurs is not a reason for another to, and finding "
-              "nothing for several in a row is expected.",
+              "Return one ANSWER OBJECT per description, each carrying its own "
+              "query_index from the list above. Answer every description, "
+              "including the ones that do not occur -- an empty matches list is "
+              "the correct answer for those.",
+              "",
+              "One answer object per description, but as MANY MATCHES INSIDE IT "
+              "as there are occurrences. A description that happens five times "
+              "gets one answer object containing five matches, each with its own "
+              "interval and subject. Returning only the clearest instance is "
+              "wrong.",
+              "",
+              "Judge each description on its own evidence: that one occurs is "
+              "not a reason for another to, and finding nothing for several in a "
+              "row is expected.",
               "Use the frame timestamps for t_start_sec / t_end_sec / "
               "clearest_frame_sec."]
     return "\n".join(lines)
