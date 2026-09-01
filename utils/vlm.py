@@ -35,25 +35,21 @@ Local rules: right turn on red is prohibited in NYC unless a sign permits it. Cy
 
 List in unreadable_reasons anything you needed but could not resolve (signal facing away, object too small, occluded by the shed or tree canopy, motion blur)."""
 
-SYSTEM_QUERY = f"""You are given frames from fixed-camera intersection footage and one or more descriptions of things that may happen in it. For each description, decide whether it occurs in these frames, and if so, every time it occurs and to whom.
+SYSTEM_QUERY = f"""You are shown frames from fixed-camera intersection footage and descriptions of things that may happen in it. For each description, report every time it occurs.
 
 {_SCENE}
 
-A description names something observable -- a road user doing something, or a state of the scene. Matching it means you saw that thing, not that its ingredients are present somewhere in frame.
+A description is a CATEGORY, not a single event. If it happens four times, report four.
 
-Rules:
+1. Report EVERY occurrence, each with its own interval and subject -- not only the clearest. Under-reporting is invisible in the output, so nothing else will catch it.
 
-1. **Report EVERY occurrence, not the clearest one.** If the same kind of thing happens four times, return four matches, each with its own interval and subject. A description is a category, not a single event, and stopping after the first instance is the most common way to be wrong here. Only if it never happens is the matches list empty.
+2. Every condition must hold. An object named alongside a state -- lights flashing, people boarding -- is not a match on the object alone. Put those in considered_and_rejected and name the condition that failed.
 
-2. "Not present" is a correct and expected answer, and some descriptions are deliberately for things that did not occur. Return an empty matches list and say in why_not_found what was absent. Never stretch a partial resemblance into a match to be helpful.
+3. An empty matches list is a correct answer. Say in why_not_found what was absent, and never stretch a resemblance into a match.
 
-3. Every condition in the description has to hold, not just the recognisable part of it. A description that names an object AND a state -- a vehicle with its lights flashing, a bus with people boarding -- is not satisfied by the object alone. If the object is there and the state is not, that is not a match; put it in considered_and_rejected and say which condition failed.
+4. considered_and_rejected is for near misses. Anything that does satisfy the description belongs in matches instead.
 
-4. Distinguish what you matched on. Seen plainly is "exact". Part of it visible but the decisive moment not, "partial". Actors and setting present but the described thing not actually observed, "superficial" -- report that rather than a match.
-
-5. Fill considered_and_rejected with what you examined and ruled out, and why. Near-misses belong there. Do not put a genuine occurrence there: if it satisfies the description, it belongs in matches.
-
-6. Judge only from the frames. Do not assume something happened between two frames; if the decisive moment falls in a gap, say so in unreadable_reasons."""
+5. Judge from the frames. If the decisive moment falls between two of them, say so rather than assuming it."""
 
 
 def with_scene(system: str, extra: str) -> str:
@@ -152,27 +148,16 @@ def query_prompt(frames, t0: float, t1: float, query: str,
 def batch_query_prompt(frames, t0: float, t1: float, queries, enc: frozenset) -> str:
     """One call, every query. `queries` is [(axis, text)]."""
     lines = [frames_text(frames, t0, t1, enc), "",
-             f"Below are {len(queries)} independent situations. Decide for EACH "
-             f"one separately whether it occurs in these frames.", ""]
+             f"{len(queries)} descriptions:", ""]
     for i, (_, q) in enumerate(queries):
         lines.append(f"[{i}] {q}")
     lines += ["",
-              "Return one ANSWER OBJECT per description, each carrying its own "
-              "query_index from the list above. Answer every description, "
-              "including the ones that do not occur -- an empty matches list is "
-              "the correct answer for those.",
-              "",
-              "One answer object per description, but as MANY MATCHES INSIDE IT "
-              "as there are occurrences. A description that happens five times "
-              "gets one answer object containing five matches, each with its own "
-              "interval and subject. Returning only the clearest instance is "
-              "wrong.",
-              "",
-              "Judge each description on its own evidence: that one occurs is "
-              "not a reason for another to, and finding nothing for several in a "
-              "row is expected.",
-              "Use the frame timestamps for t_start_sec / t_end_sec / "
-              "clearest_frame_sec."]
+              "One answer object per description, carrying its own query_index. "
+              "Answer all of them. Inside each, one match per occurrence -- five "
+              "occurrences means five matches, none means an empty list.",
+              "Judge each on its own evidence; finding nothing for several in a "
+              "row is expected. Use the frame timestamps for the three time "
+              "fields."]
     return "\n".join(lines)
 
 

@@ -75,6 +75,42 @@ def _usage(interaction) -> Dict[str, Any]:
             "price_in": PRICE_IN, "price_out": PRICE_OUT}
 
 
+def _is_rate_limit(e) -> bool:
+    """A 429 from any layer of the stack, however it is spelled."""
+    s = f"{type(e).__name__} {e}".lower()
+    return ("429" in s or "ratelimit" in s or "rate_limit" in s
+            or "resource_exhausted" in s or "resource has been exhausted" in s
+            or "exceeded a quota" in s or "too_many_requests" in s)
+
+
+def _retry(call, attempts=6, base=30.0, label=""):
+    """Retry a rate-limited call with exponential backoff.
+
+    Calls here carry hundreds of images and run to ~1M input tokens each, so a
+    handful fired back to back will cross a per-minute token quota even when
+    the account has plenty of credit left. The waits start long for that
+    reason: a per-minute window does not clear in two seconds, and retrying
+    faster than the window just burns the remaining attempts.
+
+    Only 429s are retried. A malformed request or a schema failure is not going
+    to fix itself, and retrying it wastes the images all over again.
+    """
+    import random
+    import sys
+    import time
+
+    for i in range(attempts):
+        try:
+            return call()
+        except Exception as e:
+            if not _is_rate_limit(e) or i == attempts - 1:
+                raise
+            wait = base * (2 ** i) * (0.8 + 0.4 * random.random())
+            print(f"    rate limited{label}, waiting {wait:.0f}s "
+                  f"(attempt {i + 1}/{attempts - 1})", file=sys.stderr, flush=True)
+            time.sleep(wait)
+
+
 class GeminiBackend:
     name = "gemini"
 
@@ -120,14 +156,14 @@ class GeminiBackend:
     def run(self, system, frames, text, schema, max_tokens=8000):
         """Generic call: system prompt + frames + text -> validated `schema`."""
         parts = self.parts(system, frames, text)
-        interaction = self.client.interactions.create(
+        interaction = _retry(lambda: self.client.interactions.create(
             model=self.model,
             input=parts,
             response_format={"type": "text", "mime_type": "application/json",
                              "schema": _inline_refs(schema.model_json_schema())},
             generation_config={"thinking_level": self.thinking_level,
                                "max_output_tokens": max_tokens},
-        )
+        ), label=f" ({len(frames)} images)")
         text = getattr(interaction, "output_text", "") or ""
         if not text.strip():
             # An empty body usually means the reply was cut off before any JSON
