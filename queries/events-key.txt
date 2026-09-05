@@ -1,89 +1,31 @@
-# Key event categories — annotation label vocabulary.
+# Event categories, one per line:  name | description.
 #
-# ONE SUBJECT, ONE BEHAVIOUR PER LINE. No line says "X while Y". That pattern
-# was tried and removed: it was introduced to cut out meaningless instances (a
-# vehicle on the crosswalk markings under a red hand obstructs nobody), but it
-# bought that filtering by destroying the boundary. "A turning vehicle
-# continuing through a crosswalk while a pedestrian is in it" does not say how
-# near the pedestrian has to be, whether they are in the vehicle's path, or
-# even that they are on the crosswalk. Two people labelling it will disagree,
-# and a category two people cannot agree on cannot be scored.
+# A query has to be precise enough that two people labelling the clip
+# independently would mark the same instances, and it should take more than an
+# object detector to answer. Queries that failed one of those tests were
+# removed; the reasons live in README section 4.
 #
-# The fix is not to re-add the condition more carefully. It is to choose
-# behaviours that ARE meaningful on their own: a vehicle slowing to a stop
-# mid-turn is evidence of yielding whether or not the frame also shows who it
-# yielded to; a pedestrian crossing away from the crosswalk is an event by
-# itself. Anything that needs a second actor to mean something is a relation,
-# and relations belong in a later pass over instances that were found first.
-#
-# Each line is an INDEPENDENT yes/no question. The probe may ask them in one
-# call or in several; the ground truth must not choose between them either, so
-# an instance that satisfies two categories is recorded under both.
-#
-# NO CAUSES, NO OUTCOMES. Every definition is what a frame shows.
-#
-# NO VEHICLE SIGNAL. No vehicle signal face is legible from this camera (the
-# heads present only their backs; measured 2026-08-27), so red-light running
-# and right-turn-on-red have no establishable truth here and are not listed.
-# The pedestrian phase IS measurable and is applied at scoring time, not asked
-# for in a query.
-#
-# Site constraint: the east sidewalk is under a scaffolding shed. Events there
-# are unobservable and must not be scored either way.
-#
-# Sampling: everything below persists for >= 2 s.
+# "Not present" is a correct answer. An instance that fits two categories is
+# recorded under both.
 
-# --- vehicle behaviour --------------------------------------------------------
-# `stop-crosswalk` was dropped. Stripped of the "while pedestrians are crossing"
-# clause it is just a vehicle's position relative to a painted line, which is
-# geometry rather than an event: every vehicle held at the line encroaches on it
-# to some degree, so the category is high-frequency and carries no information
-# about what happened. It also came back split 2/5 and 1/5 across two runs, which
-# is what a boundary case looks like when the boundary is a few pixels of paint.
-# Not "slows down": every vehicle decelerates into a turn, so that version is
-# physics rather than an event and came back 5/5 at both frame rates because it
-# is always true. What carries information is halting part-way through the
-# manoeuvre. Decidable on the frames: the vehicle is in essentially the same
-# place in consecutive frames while still mid-turn, rather than tracking round
-# at a steady rate.
-turn-halt      | a vehicle that stops, or almost stops, part-way through a turn
+turn-halt      | a vehicle that stops, or almost stops, part-way through a turn; the interval is the halt itself, from the vehicle stopping to it moving off
 pickup-car     | a person getting into or out of a stopped car, van or taxi
-bus-dwell      | a bus stopped at the kerb with people getting on or off it
+bus-dwell      | a bus stopped at the kerb with people getting on or off it; the interval is the whole stop, from the bus halting to it pulling away
 
-# --- pedestrians --------------------------------------------------------------
-# Cyclist categories were dropped. `bike-sidewalk` came back absent in almost
-# every sample across three runs, which is consistent with the intersection
-# having a bike lane -- riders have somewhere legitimate to be, so the category
-# would only ever produce a column of "no". `bike-wrongway` went with it: the
-# answers never said which side of the double yellow the rider was on, and
-# without that a wrong-way claim cannot be adjudicated on a two-way street.
-# A cyclist category worth having is a vehicle stopped IN the bike lane, but
-# that needs the lane's edge to be legible from this view, which is unconfirmed.
-ped-midblock   | a pedestrian crossing the roadway away from the crosswalk markings
-# A skateboard, not a scooter: an e-scooter or kick-scooter is ridden standing
-# with handlebars and is a different vehicle, so it does not count here. Keeping
-# the two apart is what makes this decidable at all — at this distance the rider
-# is the same silhouette either way and the board is what separates them.
+ped-midblock   | a pedestrian crossing the roadway away from the crosswalk markings, from stepping off the kerb until reaching the far side
+# a skateboard, not an e-scooter or kick-scooter (those have handlebars)
 skateboard     | a person riding a skateboard
 
-# --- scene state --------------------------------------------------------------
+# calibration: visible for the whole clip, so a wrong answer here means
+# something is broken upstream of the query
 roadworks      | the roadway is under construction: cones, barriers, an excavation, or workers standing in the carriageway
 
-# --- rare, high value: a minimal pair on ONE object ----------------------------
-# A police car passes through this clip, so the object is present either way.
-# Whether its roof lights are flashing is the ONLY thing separating these two
-# lines -- same vehicle, same moment, and exactly one of them is true.
-#
-# This is the one place in the file where surface recognition and the actual
-# question come apart cleanly, and there is already a sample that fell into the
-# gap: it returned the flashing version as a match while writing "but its
-# emergency lights are off" in the same answer. A model that answers "present"
-# to both has told you it is matching the vehicle and not reading its state.
+# a pair about one vehicle: a police car does pass, and exactly one of these is
+# true of it. Answering "present" to both means the vehicle is being matched
+# without its state being read.
 emergency      | an emergency vehicle with its lights flashing passing through the intersection
 emergency-dark | an emergency vehicle passing through the intersection with its lights NOT flashing
 
-# --- negatives: misannotation-rate check --------------------------------------
-# A negative is only worth its call if absence is established, and neither of
-# these has a plausible lookalike in the scene.
+# negatives: absence established, no lookalike in the scene
 negative | two vehicles making contact with each other
 negative | a horse-drawn carriage

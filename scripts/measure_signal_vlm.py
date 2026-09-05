@@ -1,24 +1,12 @@
 #!/usr/bin/env python3
-"""Read the pedestrian signal phase by asking a VLM, frame by frame.
+"""Read the pedestrian signal phase by asking a VLM, frame by frame -- same
+output shape as the arithmetic reading, so the two can be compared (agreement
+is printed when an arithmetic timeline exists).
 
-    python scripts/measure_signal_vlm.py videos/<clip>.mp4
-    python scripts/measure_signal_vlm.py videos/<clip>.mp4 --crop full --fps 0.5
+  python scripts/measure_signal_vlm.py videos/<clip>.mp4 [--crop full]
 
-Writes measurements/signal-phase-<clip>-vlm.json in the same shape as the
-arithmetic reading, so the two can be compared directly. If an arithmetic
-timeline for the same clip is on disk, this prints the agreement table.
-
-WHY BOTH EXIST. Reading `R - B` over the lit screen is deterministic: the same
-file gives the same answer every time, and disagreeing with it means changing
-a stated parameter and re-running. Asking a model gives an answer that varies
-between runs and can only be checked by eye. That is a real difference in kind,
-and it is worth having the number rather than the argument -- so this script
-exists to measure how large it is on this camera, not to replace the other one.
-
-The head box drifts BETWEEN clips (measured: the same native box frames the
-head in all five 2026-08-25 recordings but off-centre differently in each), so
---box must be re-checked when the clip changes. Pass --save-crops to write what
-was sent and look at it before believing either answer.
+--crop head sends a tight native crop (the fair test of readability);
+--crop full sends what the probe actually sees.
 """
 import argparse
 import json

@@ -35,33 +35,20 @@ Local rules: right turn on red is prohibited in NYC unless a sign permits it. Cy
 
 List in unreadable_reasons anything you needed but could not resolve (signal facing away, object too small, occluded by the shed or tree canopy, motion blur)."""
 
-SYSTEM_QUERY = f"""You are shown frames from fixed-camera intersection footage and descriptions of things that may happen in it. For each description, report every time it occurs.
+SYSTEM_QUERY = f"""You are shown frames from fixed-camera intersection footage, and a list of event descriptions. For each description, find every event in the video that matches it and report each event's time interval.
 
 {_SCENE}
 
-A description is a CATEGORY, not a single event. If it happens four times, report four.
-
-1. Report EVERY occurrence, each with its own interval and subject -- not only the clearest. Under-reporting is invisible in the output, so nothing else will catch it.
-
-2. Every condition must hold. An object named alongside a state -- lights flashing, people boarding -- is not a match on the object alone. Put those in considered_and_rejected and name the condition that failed.
-
-3. An empty matches list is a correct answer. Say in why_not_found what was absent, and never stretch a resemblance into a match.
-
-4. considered_and_rejected is for near misses. Anything that does satisfy the description belongs in matches instead.
-
-5. Judge from the frames. If the decisive moment falls between two of them, say so rather than assuming it."""
+- A description may match several events. Report each as its own match, even when their intervals overlap. Several people doing the same thing together, side by side, are one event.
+- The interval is the whole event: t_start_sec is the first frame in which it is happening, t_end_sec the last. An event already underway at the start of the window, or still underway at the end, is reported with the interval cut at the window edge.
+- A match must satisfy the whole description. An object without the named state -- lights not flashing, no one boarding -- is not a match; put it in considered_and_rejected and name what failed.
+- Finding nothing is a normal answer: an empty matches list, with why_not_found saying what was absent. Never stretch a resemblance into a match."""
 
 
 def with_scene(system: str, extra: str) -> str:
-    """Append hand-established scene facts to a system prompt.
-
-    Kept as a separate block, introduced as supplied rather than observed, so
-    the model cannot present it back as something it saw. That distinction is
-    the whole risk of supplying context: told that the east lanes run up the
-    frame, a model can report a vehicle "travelling up the frame" without
-    having looked at it, and the answer is then an echo of the prompt wearing
-    the costume of an observation. Run an arm without it before trusting an
-    arm with it.
+    """Append scene facts to a system prompt, framed as supplied rather than
+    observed -- context can be echoed back as observation, so any arm using
+    this needs a no-scene arm beside it.
     """
     if not extra or not extra.strip():
         return system
@@ -153,11 +140,8 @@ def batch_query_prompt(frames, t0: float, t1: float, queries, enc: frozenset) ->
         lines.append(f"[{i}] {q}")
     lines += ["",
               "One answer object per description, carrying its own query_index. "
-              "Answer all of them. Inside each, one match per occurrence -- five "
-              "occurrences means five matches, none means an empty list.",
-              "Judge each on its own evidence; finding nothing for several in a "
-              "row is expected. Use the frame timestamps for the three time "
-              "fields."]
+              "Answer all of them; nothing found means an empty matches list. "
+              "Use the frame timestamps for the three time fields."]
     return "\n".join(lines)
 
 

@@ -1,20 +1,12 @@
 #!/usr/bin/env python3
-"""Rewrite hand-written scene notes into a prompt block, and show what changed.
+"""Build the scene block the probe supplies: measure the camera, fold in hand
+notes, have a model tidy the result.
 
-    python scripts/build_scene.py scene/12F-Ams.txt
+  python scripts/build_scene.py scene/12F-Ams.txt --video videos/<clip>.mp4
 
-Reads rough notes, asks the model to tidy them into prose the probe can put in
-its system prompt, and writes <stem>.built.md next to the source.
-
-The rewrite is constrained to ADD NOTHING. That constraint is the point: every
-sentence in the built file is handed to the grounding model as established
-fact, so a detail invented during tidying becomes a confident wrong label on
-every run afterwards. The script prints the sentences it could not trace back
-to the source so the addition is visible rather than buried, and refuses to
-write when the rewrite is longer than the source by more than --slack.
-
-    --dry-run   show the rewrite and the diff, write nothing
-    --slack N   allow the rewrite to be N% longer in words (default 40)
+The tidy step must ADD NOTHING: new words are printed for review, and growth
+beyond --slack is refused. Camera-constant facts only -- a phase timeline
+belongs to one recording and stays out.
 """
 import argparse
 import difflib
@@ -56,6 +48,8 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("notes")
+    ap.add_argument("--video", default=None,
+                    help="measure this clip and fold the camera facts in")
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--slack", type=int, default=40)
     ap.add_argument("--backend", default="gemini")
@@ -65,6 +59,22 @@ def main():
     src = Path(a.notes)
     raw = [ln for ln in src.read_text().splitlines() if not ln.strip().startswith("#")]
     body = "\n".join(raw).strip()
+
+    if a.video:
+        from utils.measure import as_scene_text, flow_direction, signal_legibility
+        print(f"measuring {a.video} ...")
+        leg = signal_legibility(a.video)
+        flow = flow_direction(a.video)
+        for k, v in leg.items():
+            px = v.get("lit_glyph_native")
+            print(f"  {k:<10} {'lens' if v['readable'] else 'no lens':<8}"
+                  + (f"  {px[0]}x{px[1]} px" if px else ""))
+        for k, v in flow.items():
+            print(f"  {k:<12} {v.get('direction') or 'FAILED: ' + v.get('why', '')}")
+        measured = as_scene_text(leg, flow)
+        if measured:
+            print()
+            body = (measured + "\n\n" + body).strip() if body else measured
     if not body:
         sys.exit(f"{src} has no content outside comments — write some notes first.")
 

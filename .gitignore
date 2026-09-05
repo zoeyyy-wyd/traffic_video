@@ -1,14 +1,6 @@
 # secrets
 .env
 
-# data and outputs
-data/
-runs/
-*.mp4
-*.mkv
-*.avi
-*.zip
-
 # python
 __pycache__/
 *.py[cod]
@@ -16,7 +8,5 @@ __pycache__/
 venv/
 .ipynb_checkpoints/
 
-# per-run output: the summary and the parameters are worth keeping, the raw
-# rows and the rendered frames are not
-results/**/results.jsonl
-results/**/frames
+
+runs/

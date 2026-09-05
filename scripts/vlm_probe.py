@@ -1,44 +1,13 @@
 #!/usr/bin/env python3
 """Probe what a VLM can ground in fixed-camera intersection footage.
 
-Two modes over the same frames:
+query mode: locate described situations. open mode: report events unprompted.
+One run, one directory (summary.md, results.jsonl, run.json); a run never
+appends to another run's rows.
 
-  query   give it a described situation; can it locate that, and say so when
-          the situation is not there?  This is the experiment.
-  open    give it no hint; what does it find on its own?
-
-Every run gets its own directory under results/, named for when it ran and
-what it ran, holding summary.md, results.jsonl and run.json. Nothing is ever
-appended to a previous run's output.
-
-  # look at what the model would receive -- no API call, no key needed
-  python scripts/vlm_probe.py data/clip.mp4 --dry-run
-
-  # a whole recording as one grid, to see what the camera covers
-  python scripts/vlm_probe.py data/clip.mp4 --overview runs/overview.jpg
-
-  # the query probe
-  python scripts/vlm_probe.py data/clip.mp4 --start 40 --end 100 \
-      --query "a vehicle that entered the intersection and stopped partway
-               because someone was crossing in front of it"
-
-  # a batch of queries from a file, one per line -- the golden set turned
-  # into an experiment.  Include queries for situations that did NOT occur:
-  # a probe that never answers "absent" has not been tested.
-  python scripts/vlm_probe.py data/clip.mp4 --queries queries.txt
-
-  # open-ended, no query
-  python scripts/vlm_probe.py data/clip.mp4 --start 40 --end 100
-
-  # how the frames carry their timestamps -- an ablation, one channel at a
-  # time. Each arm lands in its own run directory on its own.
-  for enc in burn,list burn interleave burn,interleave; do
-      python scripts/vlm_probe.py data/clip.mp4 --queries queries.txt \
-          --time-encoding $enc --name "ts-${enc//,/-}"
-  done
-
-Deps: pip install -r requirements.txt
-Keys: cp .env
+  python scripts/vlm_probe.py videos/<clip>.mp4 \
+      --queries queries/events-key.txt --fps 1 --batch-queries --samples 5
+  python scripts/vlm_probe.py videos/<clip>.mp4 --dry-run   # render only, no API
 """
 import argparse
 import json
@@ -117,7 +86,7 @@ def link_frames(run_dir, frames_dir):
     """A `frames` symlink inside the run directory.
 
     The frames are the evidence for every claim in summary.md, and they live
-    outside results/ because they are large and disposable while the summary
+    outside the run directory because they are large and disposable while the summary
     is neither. The link keeps them one hop away instead of one path guess.
     """
     link = run_dir / "frames"
@@ -306,27 +275,11 @@ def parse_args():
                         "independent and this is worth an ablation: change "
                         f"one at a time. Default '{DEFAULT_ENCODING}'")
     p.add_argument("--batch-queries", action="store_true",
-                   help="ask every query in ONE call instead of one call each. "
-                        "The frames are then sent once rather than once per "
-                        "query, which is a saving of exactly the query count -- "
-                        "with 10 queries, 91 images instead of 910. The cost is "
-                        "that the queries stop being independent: the model sees "
-                        "all of them together and one answer can inform another. "
-                        "That is a change in the measurement, so it is off by "
-                        "default and worth an arm of its own")
+                   help="all queries in one call: frames sent once instead of once per query; queries stop being independent")
     p.add_argument("--samples", type=int, default=1,
-                   help="independent answers to draw per query. Each is its own "
-                        "call, so cost scales with it -- there is no free "
-                        "multi-sample on this API (candidate_count returns one "
-                        "output; chaining interactions re-bills the images). "
-                        "Worth paying for: at n=1 an answer cannot be told from "
-                        "a coin flip, and this probe has already produced "
-                        "different answers to the same query on the same frames")
+                   help="independent answers per query; each is its own call, so cost scales with N")
     p.add_argument("--scene", default=None,
-                   help="file of established scene facts to supply in the "
-                        "system prompt (see scripts/build_scene.py). This is an "
-                        "ablation arm, not a default: supplied context can be "
-                        "echoed back as observation, so run without it too")
+                   help="scene facts for the system prompt (see build_scene.py); run a no-scene arm too")
     p.add_argument("--backend", choices=["gemini", "claude"], default="gemini")
     p.add_argument("--model", default=None)
     p.add_argument("--max-output-tokens", type=int, default=32000,
@@ -337,11 +290,13 @@ def parse_args():
                    help="label for this run, used in its directory name. "
                         "Default is composed from the query set and fps "
                         "so an ablation loop separates itself")
-    p.add_argument("--results-root", default="results",
-                   help="parent of the per-run directories")
+    p.add_argument("--results-root", default="experiment_results/adhoc",
+                   help="parent of the per-run directories. Experiments name "
+                        "their own arm directories with --run-dir; this is "
+                        "where a one-off run lands")
     p.add_argument("--run-dir", default=None,
                    help="use exactly this directory instead of composing "
-                        "results/<timestamp>-<name>. Overrides --name")
+                        "<results-root>/<label>_<time>. Overrides --name")
     p.add_argument("--out", default=None,
                    help="where rendered frames go (large; gitignored). "
                         "Default runs/<run directory name>, so frames and "
@@ -459,6 +414,13 @@ def main():
               f"situation yourself, the model cannot either.")
         return
 
+    # Appending to a directory that already holds answers silently merges two
+    # runs into one jsonl, and a comparison between conditions is worthless if
+    # it cannot be told which rows came from which.
+    if (run_dir / "results.jsonl").exists():
+        sys.exit(f"{run_dir}/results.jsonl already exists.\n"
+                 f"  A run never appends to another run's rows. Move it aside, "
+                 f"or point --run-dir somewhere else.")
     run_dir.mkdir(parents=True, exist_ok=True)
     link_frames(run_dir, out)
     # Written before the first call, not after the last: a run that dies
@@ -525,6 +487,16 @@ def main():
                                          "sample": sample,
                                          "error": f"{type(e).__name__}: {e}"})
                         print(f"\nbatch s{sample}  FAILED  {type(e).__name__}: {str(e)[:140]}")
+                        # The first sample failing after the whole backoff
+                        # schedule means the quota will not clear inside this
+                        # run. Every later sample would repeat the same ~16
+                        # minutes of waiting to reach the same answer, so stop
+                        # rather than spend an hour proving it.
+                        if sample == 1:
+                            print("  first sample exhausted its retries -- "
+                                  "aborting rather than repeating the wait for "
+                                  "every remaining sample")
+                            break
                         continue
                     usages.append(usage)
                     got = {ans.query_index for ans in res.answers}

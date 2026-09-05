@@ -1,0 +1,196 @@
+# GROUND TRUTH — L12thFloorBotwinik-D-2026-08-25_T-17_00_01.mp4
+#
+# Reviewer:
+# Date:
+# Watched at:
+#
+# LABEL BLIND. Do not open results/*/summary.md while filling this in. Ground
+# truth read after seeing the model's answer is not independent of it.
+#
+# HOW TO FILL. Under each category line:
+#
+#   occurred:   yes | no | not-reviewed
+#
+#     yes            it happens -- one numbered line per instance
+#     no             you swept the WHOLE clip for it and it does not happen.
+#                    Only this turns a model hit into a FABRICATION rather than
+#                    merely unverified.
+#     not-reviewed   you did not check; leave it, it is dropped from scoring.
+#                    A wrong `no` corrupts the score, so guess at nothing.
+#
+#   t=  start and end, seconds from clip start
+#   who: the road user, specific enough that someone else finds the same one
+#   ph: pedestrian phase at that moment, for the crosswalk involved:
+#       W = white walking figure, F = flashing countdown, R = red hand, - = n/a
+#       Only needed where the phase changes what the event means (a vehicle on
+#       the crosswalk markings obstructs nobody under a red hand). Leave `-`
+#       everywhere else; it is also recoverable from the measured timeline.
+#   ?:  certain | probable | ambiguous  (ambiguous is recorded, not scored)
+#
+# MULTI-LABEL: an instance may satisfy several categories. Record it under
+# EVERY category it satisfies -- do not pick one. Scoring is per category and
+# independent, so a single-label sheet manufactures false positives.
+#
+# Category text below is verbatim from queries/events-key.txt.
+# ---------------------------------------------------------------------------
+
+# Key event categories — annotation label vocabulary.
+#
+# ONE SUBJECT, ONE BEHAVIOUR PER LINE. No line says "X while Y". That pattern
+# was tried and removed: it was introduced to cut out meaningless instances (a
+# vehicle on the crosswalk markings under a red hand obstructs nobody), but it
+# bought that filtering by destroying the boundary. "A turning vehicle
+# continuing through a crosswalk while a pedestrian is in it" does not say how
+# near the pedestrian has to be, whether they are in the vehicle's path, or
+# even that they are on the crosswalk. Two people labelling it will disagree,
+# and a category two people cannot agree on cannot be scored.
+#
+# The fix is not to re-add the condition more carefully. It is to choose
+# behaviours that ARE meaningful on their own: a vehicle slowing to a stop
+# mid-turn is evidence of yielding whether or not the frame also shows who it
+# yielded to; a pedestrian crossing away from the crosswalk is an event by
+# itself. Anything that needs a second actor to mean something is a relation,
+# and relations belong in a later pass over instances that were found first.
+#
+# Each line is an INDEPENDENT yes/no question. The probe may ask them in one
+# call or in several; the ground truth must not choose between them either, so
+# an instance that satisfies two categories is recorded under both.
+#
+# NO CAUSES, NO OUTCOMES. Every definition is what a frame shows.
+#
+# NO VEHICLE SIGNAL. No vehicle signal face is legible from this camera (the
+# heads present only their backs; measured 2026-08-27), so red-light running
+# and right-turn-on-red have no establishable truth here and are not listed.
+# The pedestrian phase IS measurable and is applied at scoring time, not asked
+# for in a query.
+#
+# Site constraint: the east sidewalk is under a scaffolding shed. Events there
+# are unobservable and must not be scored either way.
+#
+# Sampling: everything below persists for >= 2 s.
+
+# --- vehicle behaviour --------------------------------------------------------
+# `stop-crosswalk` was dropped. Stripped of the "while pedestrians are crossing"
+# clause it is just a vehicle's position relative to a painted line, which is
+# geometry rather than an event: every vehicle held at the line encroaches on it
+# to some degree, so the category is high-frequency and carries no information
+# about what happened. It also came back split 2/5 and 1/5 across two runs, which
+# is what a boundary case looks like when the boundary is a few pixels of paint.
+# Not "slows down": every vehicle decelerates into a turn, so that version is
+# physics rather than an event and came back 5/5 at both frame rates because it
+# is always true. What carries information is halting part-way through the
+# manoeuvre. Decidable on the frames: the vehicle is in essentially the same
+# place in consecutive frames while still mid-turn, rather than tracking round
+# at a steady rate.
+turn-halt      | a vehicle that stops, or almost stops, part-way through a turn; the interval is the halt itself, from the vehicle stopping to it moving off
+    occurred: yes
+      1)  t=    00:04    -     00:07     s   who:      a black car and a white car                  ph:      ?:
+      2)  t=    00:38    -     00:40     s   who:      a grey car                  ph:      ?:
+      3)  t=    01:35    -     01:46     s   who:      a black car                  ph:      ?:
+      4)  t=    01:52    -     01:53     s   who:      a black car            ?:probable
+      5)  t=    02:07    -     02:08     s   who:      a black car            ?:probable
+
+pickup-car     | a person getting into or out of a stopped car, van or taxi
+    occurred: yes
+      1)  t=    00:18    -     00:30     s   who:      a grey car                  ph:      ?:
+      2)  t=        -          s   who:                              ?:
+      3)  t=        -          s   who:                              ?:
+
+bus-dwell      | a bus stopped at the kerb with people getting on or off it; the interval is the whole stop, from the bus halting to it pulling away
+    occurred: yes
+      1)  t=    01:47    -     02:17     s   who:       a blue bus                 ph:      ?:
+      2)  t=        -          s   who:                              ?:
+      3)  t=        -          s   who:                              ?:
+
+
+# --- pedestrians --------------------------------------------------------------
+# Cyclist categories were dropped. `bike-sidewalk` came back absent in almost
+# every sample across three runs, which is consistent with the intersection
+# having a bike lane -- riders have somewhere legitimate to be, so the category
+# would only ever produce a column of "no". `bike-wrongway` went with it: the
+# answers never said which side of the double yellow the rider was on, and
+# without that a wrong-way claim cannot be adjudicated on a two-way street.
+# A cyclist category worth having is a vehicle stopped IN the bike lane, but
+# that needs the lane's edge to be legible from this view, which is unconfirmed.
+ped-midblock   | a pedestrian crossing the roadway away from the crosswalk markings, from stepping off the kerb until reaching the far side
+    occurred: yes
+      1)  t=    00:40    -     00:57     s   who:     4people on the left                        ?:
+      2)  t=    01:00    -     01:10     s   who:     1person on the left                        ?:
+      3)  t=    01:17    -     01:24     s   who:     3people on the top   
+      3)  t=    01:55    -     02:03     s   who:     1person on the bottom
+      3)  t=    02:19    -     02:27     s   who:     3people on the left
+      3)  t=    01:43    -     01:53     s   who:     1person on the top
+      3)  t=    01:58    -     02:07     s   who:     2people on the top
+      3)  t=    01:55    -     02:20     s   who:     1person on the bottom                    ?:
+
+
+skateboard     | a person riding a skateboard
+    occurred: yes
+      1)  t=    01:52    -     02:00     s   who:   a person with red clothes                           ?:
+      2)  t=        -          s   who:                              ?:
+      3)  t=        -          s   who:                              ?:
+
+# --- scene state --------------------------------------------------------------
+roadworks      | the roadway is under construction: cones, barriers, an excavation, or workers standing in the carriageway
+    occurred: yes
+      1)  t=    00:00    -     03:00     s   who:                        ph:      ?:
+      2)  t=        -          s   who:                              ?:
+      3)  t=        -          s   who:                              ?:
+
+
+# --- rare, high value: a minimal pair on ONE object ----------------------------
+# A police car passes through this clip. Whether its roof lights were flashing
+# is the ONLY thing separating these two lines -- same vehicle, same moment,
+# opposite answers. One earlier sample returned the flashing version as a match
+# while writing "but its emergency lights are off" in the same answer, so this
+# pair is exactly where "the object is present" gets mistaken for "the query is
+# satisfied". Whichever of the two you tick, the other must be the opposite.
+emergency      | an emergency vehicle with its lights flashing passing through the intersection
+    occurred: no
+      1)  t=        -          s   who:                              ?:
+      2)  t=        -          s   who:                              ?:
+      3)  t=        -          s   who:                              ?:
+
+emergency-dark | an emergency vehicle passing through the intersection with its lights NOT flashing
+    occurred: yes
+      1)  t=    00:32    -     00:35     s   who:     nypd car                         ?:
+      2)  t=        -          s   who:                              ?:
+      3)  t=        -          s   who:                              ?:
+
+# --- negatives: misannotation-rate check --------------------------------------
+# Neither of these has a plausible lookalike in the scene.
+negative | two vehicles making contact with each other
+    occurred: no
+      1)  t=        -          s   who:                              ?:
+      2)  t=        -          s   who:                              ?:
+      3)  t=        -          s   who:                              ?:
+
+negative | a horse-drawn carriage
+    occurred: no
+      1)  t=        -          s   who:                              ?:
+      2)  t=        -          s   who:                              ?:
+      3)  t=        -          s   who:                              ?:
+
+# ---------------------------------------------------------------------------
+# SIGNAL PHASE COUPLING  (free while watching; decides whether vehicle-signal
+# events ever become askable here -- the pedestrian head is legible from this
+# camera, the vehicle heads are not). Watch the east-corner pedestrian signal.
+#
+#   white walking figure -> which traffic is moving:
+#   red hand             -> which traffic is moving:
+#   consistent across cycles?  yes / no:
+#
+# ---------------------------------------------------------------------------
+# SCENE NOTES  (anything that changes what can be asked)
+#   -
+#   -
+#
+# ---------------------------------------------------------------------------
+# EVENTS SEEN THAT NO CATEGORY COVERS
+# The vocabulary is a guess; this section is what the next version is built from.
+#   t=        -          s
+#   t=        -          s
+#   t=        -          s
+
+
+

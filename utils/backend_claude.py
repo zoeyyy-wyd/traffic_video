@@ -15,17 +15,7 @@ def _is_rate_limit(e) -> bool:
 
 
 def _retry(call, attempts=6, base=30.0, label=""):
-    """Retry a rate-limited call with exponential backoff.
-
-    Calls here carry hundreds of images and run to ~1M input tokens each, so a
-    handful fired back to back will cross a per-minute token quota even when
-    the account has plenty of credit left. The waits start long for that
-    reason: a per-minute window does not clear in two seconds, and retrying
-    faster than the window just burns the remaining attempts.
-
-    Only 429s are retried. A malformed request or a schema failure is not going
-    to fix itself, and retrying it wastes the images all over again.
-    """
+    """Retry 429s with long exponential backoff; see backend_gemini._retry."""
     import random
     import sys
     import time

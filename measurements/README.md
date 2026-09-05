@@ -13,12 +13,18 @@ whether the claim can be **re-derived**:
 | directory | holds | to disagree with it you… |
 |---|---|---|
 | `measurements/` | a number and the procedure that produced it | change the stated parameters and re-run; you get a number to argue about |
-| `results/` | a model's free-text assertion about a moment | open the named second and look; there is nothing to re-run — the same prompt on the same frames has already produced different answers on different runs |
+| `experiment_results/` | a model's free-text assertion about a moment | open the named second and look; there is nothing to re-run — the same prompt on the same frames has already produced different answers on different runs |
 | `runs/` | the frames a run actually sent | — disposable |
 
 So a measurement is falsifiable by re-running and a probe result is falsifiable
-only by eye. That is why nothing in `results/` may be promoted into a
+only by eye. That is why nothing in `experiment_results/` may be promoted into a
 measurement without being checked against the frames first.
+
+**These are inputs, not judges.** They decide what is worth asking --
+`signal-legibility` is why no red-light query is in the vocabulary -- and they
+feed the scene block via `utils/measure.py`. Nothing here scores a run; only the
+hand-filled ground-truth sheet does. Reproducible and authoritative are
+different things, and this is only the first.
 
 Each file records `method` alongside `result`, a `judgement` field naming the
 choices that were not forced by the data, and a `reliability` field saying
@@ -33,11 +39,15 @@ direction could not be recovered is itself worth having.
 Four places, and nothing lands anywhere else.
 
 ```
-measurements/<topic>.json          a measured fact. Model-free. Reviewed, kept.
-results/<timestamp>-<name>/        one probe run. Written by scripts/vlm_probe.py.
-runs/<timestamp>-<name>/           the frames that run actually sent. Gitignored.
-notes/                             write-ups and ground-truth sheets.
+measurements/<topic>.json     a measured fact, with its method and judgement calls
+experiment_results/<name>/    one experiment: result.md, and arms/<arm>/ inside
+runs/                         the frames a run actually sent.
+ground-truth/                 the hand-filled sheets runs are scored against.
 ```
+
+Regenerate with `python scripts/measure.py videos/<clip>.mp4`. The same
+functions build the scene block, so a fix here cannot drift out of step with
+what the pipeline uses.
 
 **Scratch does not go in the repo.** Intermediate renders made while checking a
 claim — fixed-box traces, zoomed crops, montages — are working material, not

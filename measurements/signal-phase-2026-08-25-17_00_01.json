@@ -1,0 +1,62 @@
+{
+  "topic": "pedestrian signal phase timeline",
+  "clip": "videos/L12thFloorBotwinik-D-2026-08-25_T-17_00_01.mp4",
+  "method": "Read mean(R)-mean(B) and mean luminance on the lit screen at 2 fps. Three states, not two: the countdown flashes, so colour separates the hand and luminance splits the rest into the white figure and the dark half of a flash.",
+  "judgement": "The thresholds were hand-set on the 2026-08-25 17:00 clip and have not been validated against a second observer or the other pedestrian head. Boundaries are +/- 1 s; the phase LABELS are firmer than the boundaries. Which crosswalk this head governs is not established, so the timeline is not yet attached to a particular crossing.",
+  "reproduce": "python scripts/measure.py videos/L12thFloorBotwinik-D-2026-08-25_T-17_00_01.mp4 --only phase",
+  "not_for_scene": "A phase timeline belongs to one recording. It is not folded into the scene block, which is reused across clips.",
+  "screen_native": [
+    2408,
+    395,
+    2416,
+    405
+  ],
+  "phases": [
+    {
+      "state": "DONT_WALK",
+      "t_start": 0.0,
+      "t_end": 49.03
+    },
+    {
+      "state": "WALK",
+      "t_start": 49.03,
+      "t_end": 53.03
+    },
+    {
+      "state": "FLASHING",
+      "t_start": 53.03,
+      "t_end": 63.03
+    },
+    {
+      "state": "DONT_WALK",
+      "t_start": 63.03,
+      "t_end": 65.03
+    },
+    {
+      "state": "FLASHING",
+      "t_start": 65.03,
+      "t_end": 65.53
+    },
+    {
+      "state": "DONT_WALK",
+      "t_start": 65.53,
+      "t_end": 130.53
+    },
+    {
+      "state": "WALK",
+      "t_start": 130.53,
+      "t_end": 147.53
+    },
+    {
+      "state": "FLASHING",
+      "t_start": 147.53,
+      "t_end": 153.53
+    },
+    {
+      "state": "DONT_WALK",
+      "t_start": 153.53,
+      "t_end": 180.03
+    }
+  ],
+  "cycle_s": 81.5
+}

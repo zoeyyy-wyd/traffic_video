@@ -23,6 +23,9 @@ from .render import to_b64
 
 
 
+# The image quota that blocked the pro line recovered on 2026-09-04 (181
+# images accepted, ~51 s/call vs flash's 26 s). 3.5-flash remains the
+# fallback if pro 429s again mid-experiment.
 DEFAULT_MODEL = "gemini-3.1-pro-preview"
 # Pricing not pinned here: verify current rates before quoting a cost.
 PRICE_IN = PRICE_OUT = None
@@ -84,16 +87,9 @@ def _is_rate_limit(e) -> bool:
 
 
 def _retry(call, attempts=6, base=30.0, label=""):
-    """Retry a rate-limited call with exponential backoff.
-
-    Calls here carry hundreds of images and run to ~1M input tokens each, so a
-    handful fired back to back will cross a per-minute token quota even when
-    the account has plenty of credit left. The waits start long for that
-    reason: a per-minute window does not clear in two seconds, and retrying
-    faster than the window just burns the remaining attempts.
-
-    Only 429s are retried. A malformed request or a schema failure is not going
-    to fix itself, and retrying it wastes the images all over again.
+    """Retry 429s with long exponential backoff. Calls carry ~1M tokens of
+    images and a per-minute window does not clear quickly. Only rate limits are
+    retried; anything else would re-upload the images to fail the same way.
     """
     import random
     import sys

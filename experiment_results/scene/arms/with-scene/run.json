@@ -1,0 +1,43 @@
+{
+  "run": "with-scene",
+  "started": "2026-09-05T00:09:57",
+  "mode": "query",
+  "clip": "videos/L12thFloorBotwinik-D-2026-08-25_T-17_00_01.mp4",
+  "video": {
+    "width": 3840,
+    "height": 2160,
+    "duration_s": 180.0330078125,
+    "avg_rate": "83005440/2766829",
+    "base_rate": "30",
+    "nb_frames": 5404,
+    "likely_vfr": true
+  },
+  "range_sec": [
+    0.0,
+    180.0330078125
+  ],
+  "window_sec": null,
+  "overlap_sec": null,
+  "fps": 1.0,
+  "time_encoding": "interleave",
+  "backend": "gemini",
+  "model": "gemini-3.1-pro-preview",
+  "resolution": "high",
+  "thinking_level": "high",
+  "max_output_tokens": 32000,
+  "scene_file": "scene/12F-Ams.built.md",
+  "scene_words": 260,
+  "queries_file": "queries/events-key.txt",
+  "axis_filter": null,
+  "samples_per_query": 5,
+  "batch_queries": true,
+  "n_queries": 10,
+  "n_windows": 1,
+  "n_frames": 181,
+  "frames_dir": "runs/scene/with-scene",
+  "finished": "2026-09-05T00:19:46",
+  "calls_ok": 5,
+  "calls_failed": 0,
+  "tokens_in": 1007790,
+  "tokens_out": 54956
+}
